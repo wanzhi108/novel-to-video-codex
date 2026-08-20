@@ -89,3 +89,4 @@ resources/*.png
 resources/*.ico
 story2/refs/
 cosyvoice2/cn_refs/*.wav
+output/

@@ -1496,7 +1496,8 @@ async def burn_subtitles(video_path: str, subtitle_text: str, output_path: str,
             f"1\n00:00:00,000 --> 00:59:59,000\n{clean_text}\n\n",
             encoding="utf-8-sig"
         )
-        drawtext = f"subtitles='{str(srt_path).replace(':', '\\:').replace(chr(39), chr(92)+chr(39))}'"
+        escaped_srt = str(srt_path).replace(":", "\\:").replace("'", "\\'")
+        drawtext = f"subtitles='{escaped_srt}'"
 
     filter_str = (
         f"drawbox=x=0:y={box_y}:w=iw:h={box_h}:color=black@0.6:t=fill,"
@@ -8183,6 +8184,7 @@ async def burn_timed_subtitles(video_path: str, timings: list[dict], output_path
 
     # 用 ffmpeg 烧录 SRT 字幕
     # v8.7 Bug修复: 跨平台字体选择 — Windows用Microsoft YaHei，Linux/macOS用Noto Sans CJK
+    escaped_srt = str(srt_path).replace(":", "\\:").replace("'", "\\'")
     if sys.platform == "win32":
         font_name = "Microsoft YaHei"
     elif sys.platform == "darwin":
@@ -8192,7 +8194,7 @@ async def burn_timed_subtitles(video_path: str, timings: list[dict], output_path
     
     cmd = [
         ffmpeg, "-y", "-i", video_path,
-        "-vf", f"subtitles='{str(srt_path).replace(':', '\\\\:').replace("'", "'\\''")}'"
+        "-vf", f"subtitles='{escaped_srt}'"
                f":force_style='FontName={font_name},FontSize={font_size},"
                f"PrimaryColour=&HFFFFFF,OutlineColour=&H40000000,Outline=1,MarginV={margin_bottom}'",
         "-c:v", "libx264", "-crf", "23", "-preset", "ultrafast",
