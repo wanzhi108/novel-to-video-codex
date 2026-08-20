@@ -90,7 +90,7 @@ novel-to-video-codex/
 │   │   ├── pages/         # Dashboard/StoryboardEditor/Settings 等
 │   │   ├── hooks/         # useApi/useComfyUI/useWebSocket 等
 │   │   └── stores/        # Zustand 状态管理
-│   └── dist/              # 预构建前端（PyInstaller 打包用）
+│   └── dist/              # 前端构建产物（npm run build 生成，不入库）
 ├── story2/                 # 独立视频生成管线
 │   ├── gen_ltx.py         # LTX I2V 韧性驱动（孤儿回收+无限重试+skip）
 │   ├── assemble.py        # 最终合成（xfade+拉伸+字幕+BGM+片尾+封面）

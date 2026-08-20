@@ -88,7 +88,7 @@ ffprobe -version
 
 ## 4. 字体
 
-字幕烧录需要 **NotoSansSC** 字体（已包含在 `resources/fonts/`）。
+字幕烧录需要 **NotoSansSC** 字体（工作区保留，不入 Git；克隆后需按 README 恢复）。
 
 story2 管线通过 `fontsdir` 参数注入 FFmpeg，无需系统安装。
 
@@ -100,7 +100,7 @@ npm install
 npm run build    # 产物输出到 web/dist/
 ```
 
-如果只修改后端逻辑，`web/dist/` 已包含预构建前端，无需重新构建。
+如果只修改后端逻辑，可先执行 `npm run build` 生成 `web/dist/`，无需每次启动都重建。
 
 ## 6. 环境变量配置
 
