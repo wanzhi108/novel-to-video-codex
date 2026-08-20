@@ -1,0 +1,78 @@
+# ── 密钥 / 环境变量（绝不提交）──
+.env
+.env.local
+*.secret
+launcher_config.json
+
+# ── 日志 ──
+*.log
+*.out
+_logs/
+
+# ── Python ──
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# ── Node.js ──
+node_modules/
+web/node_modules/
+
+# ── 构建产物 ──
+build/
+dist/
+*.spec.bak
+
+# ── 运行时产物（story2 管线）──
+story2/videos/
+story2/videos_v1_bak/
+story2/output/
+story2/voice_lines/
+story2/subs/
+story2/__pycache__/
+story2/shot_*_kf*.png
+
+# ── ComfyUI 模型（太大，不放仓库）──
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+
+# ── CosyVoice2 模型 ──
+cosyvoice2/pretrained_models/
+cosyvoice2/cosy_env/
+
+# ── 临时文件 ──
+*.tmp
+*.bak
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ──
+.idea/
+.vscode/
+*.iml
+.qoder/
+
+# ── 数据库 ──
+*.db
+*.db-journal
+
+# ── 大文件 ──
+*.tar.gz
+*.zip
+*.7z
+
+# ── 测试 / 归档 ──
+_archive/
+_corrupted_backup/
+_subtest/
+test_output/
+test_ltx23_output/

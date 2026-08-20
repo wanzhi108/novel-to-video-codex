@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>生成进度实时监控</title>
+<style>
+  :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+    --green: #3fb950; --blue: #58a6ff; --orange: #d29922; --red: #f85149; --purple: #a371f7;
+    --pink: #db61a2; --cyan: #39d353; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; padding:20px; }
+  .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
+  .header h1 { font-size:1.4rem; font-weight:600; }
+  .stats { display:flex; gap:16px; flex-wrap:wrap; }
+  .stat-card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:12px 16px; min-width:100px; text-align:center; }
+  .stat-card .value { font-size:1.8rem; font-weight:700; line-height:1.2; }
+  .stat-card .label { font-size:0.75rem; color:var(--muted); margin-top:4px; }
+  .stat-card.green .value { color:var(--green); }
+  .stat-card.blue .value { color:var(--blue); }
+  .stat-card.orange .value { color:var(--orange); }
+  .stat-card.purple .value { color:var(--purple); }
+
+  .progress-bar-wrap { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:20px; }
+  .progress-info { display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.85rem; }
+  .progress-outer { height:8px; background:var(--border); border-radius:4px; overflow:hidden; }
+  .progress-inner { height:100%; background:linear-gradient(90deg, var(--purple), var(--blue)); border-radius:4px; transition:width .4s ease; }
+
+  .comfyui-status { display:flex; align-items:center; gap:8px; margin-bottom:20px; font-size:0.85rem; }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  .dot.green { background:var(--green); box-shadow:0 0 6px var(--green); }
+  .dot.orange { background:var(--orange); box-shadow:0 0 6px var(--orange); }
+  .dot.red { background:var(--red); }
+
+  .scene-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:10px; }
+  .scene-card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:12px; transition:all .3s; }
+  .scene-card.active { border-color:var(--blue); box-shadow:0 0 12px rgba(88,166,255,.15); }
+  .scene-card.done { border-color:var(--green); opacity:.8; }
+  .scene-card.error { border-color:var(--red); }
+  .scene-card .scene-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .scene-card .scene-id { font-size:0.7rem; color:var(--muted); }
+  .scene-card .scene-status { font-size:0.7rem; padding:2px 8px; border-radius:10px; font-weight:600; }
+  .scene-card .scene-title { font-size:0.9rem; font-weight:500; margin-bottom:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .scene-card .scene-preview { width:100%; aspect-ratio:9/16; background:var(--border); border-radius:4px; overflow:hidden; position:relative; }
+  .scene-card .scene-preview img, .scene-card .scene-preview video { width:100%; height:100%; object-fit:cover; }
+  .scene-card .preview-placeholder { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:0.8rem; }
+  .status-pending { background:rgba(139,148,158,.2); color:var(--muted); }
+  .status-generating { background:rgba(88,166,255,.2); color:var(--blue); }
+  .status-video { background:rgba(163,113,247,.2); color:var(--purple); }
+  .status-done { background:rgba(63,185,80,.2); color:var(--green); }
+  .status-error { background:rgba(248,81,73,.2); color:var(--red); }
+
+  .empty-hint { text-align:center; padding:40px; color:var(--muted); }
+  .refresh-dot { font-size:0.7rem; color:var(--muted); }
+  .auto-refresh { display:flex; align-items:center; gap:6px; }
+  .auto-refresh input { accent-color:var(--blue); }
+
+  .loading-bar { height:2px; background:linear-gradient(90deg, transparent, var(--blue), transparent); animation:loading 1.5s infinite; border-radius:1px; margin-top:4px; }
+  @keyframes loading { 0%{opacity:0.3;} 50%{opacity:1;} 100%{opacity:0.3;} }
+
+  .log-row { display:flex; align-items:center; gap:6px; padding:4px 8px; border-radius:4px; font-size:0.78rem; font-family:monospace; }
+  .log-time { color:var(--muted); white-space:nowrap; }
+  .log-msg { flex:1; }
+  .log-row.info { color:var(--text); }
+  .log-row.success { color:var(--green); }
+  .log-row.warn { color:var(--orange); }
+  .log-row.error { color:var(--red); }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>📡 实时生成进度</h1>
+    <span class="refresh-dot" id="elapsed"></span>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <select id="jobSelector" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:0.85rem;max-width:280px;" onchange="onJobChange(this.value)"></select>
+    <label class="auto-refresh">
+      <input type="checkbox" id="autoRefresh" checked> 自动刷新
+    </label>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat-card green"><div class="value" id="statDone">0</div><div class="label">✅ 已完成</div></div>
+  <div class="stat-card blue"><div class="value" id="statImg">0</div><div class="label">🖼️ 已出图</div></div>
+  <div class="stat-card orange"><div class="value" id="statActive">0</div><div class="label">⚡ 进行中</div></div>
+  <div class="stat-card purple"><div class="value" id="statTotal">0</div><div class="label">📊 总计</div></div>
+</div>
+
+<div class="progress-bar-wrap">
+  <div class="progress-info"><span id="progressLabel">等待数据...</span><span id="progressPercent">0%</span></div>
+  <div class="progress-outer"><div class="progress-inner" id="progressBar" style="width:0%"></div></div>
+</div>
+
+<div class="comfyui-status" id="comfyuiStatus">
+  <span class="dot red" id="comfyuiDot"></span>
+  <span id="comfyuiText">ComfyUI: 检查中...</span>
+</div>
+
+<div class="comfyui-status" id="cosyvoiceStatus">
+  <span class="dot red" id="cosyvoiceDot"></span>
+  <span id="cosyvoiceText">CosyVoice 2: 检查中...</span>
+</div>
+
+<div class="scene-grid" id="sceneGrid">
+  <div class="empty-hint">加载中...</div>
+</div>
+
+<div style="margin-top:24px; padding:12px 16px; background:var(--card); border:1px solid var(--border); border-radius:8px;">
+  <div style="font-size:0.8rem; color:var(--muted); margin-bottom:8px;">📋 事件日志</div>
+  <div id="logContainer" style="max-height:200px; overflow-y:auto;"></div>
+</div>
+
+<script>
+const API_BASE = (() => {
+  if (window.location.hostname && window.location.port) return window.location.origin;
+  return 'http://localhost:8190';
+})();
+const POLL_INTERVAL = 2500;
+let MONITOR_START = Date.now();
+
+let JOB_ID = null;
+let prevStatuses = {};
+let autoRefresh = true;
+let pollTimer = null;
+
+document.getElementById('autoRefresh').addEventListener('change', function(e) {
+  autoRefresh = e.target.checked;
+  if (autoRefresh) startPolling();
+  else clearTimeout(pollTimer);
+});
+
+async function initJobs() {
+  try {
+    const resp = await fetch(API_BASE + '/api/jobs');
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    // API 返回 { jobs: [{job_id, novel_title, scenes_count, done_count, ...}] }
+    const jobs = (data.jobs || []);
+    const sel = document.getElementById('jobSelector');
+    sel.innerHTML = '';
+    
+    if (!jobs.length) {
+      sel.innerHTML = '<option value="">-- 无任务 --</option>';
+      document.getElementById('sceneGrid').innerHTML = '<div class="empty-hint">📭 暂无任务数据<br><small>请先在主页面提交小说文本</small></div>';
+      return;
+    }
+    
+    // Sort by scene count descending, pick best
+    jobs.sort((a,b) => {
+      const aScenes = a.scenes_count || 0;
+      const bScenes = b.scenes_count || 0;
+      if (aScenes !== bScenes) return bScenes - aScenes;
+      const aRank = ['generating','done','merging','postprocess'].includes(a.current_step) ? 1 : 0;
+      const bRank = ['generating','done','merging','postprocess'].includes(b.current_step) ? 1 : 0;
+      return bRank - aRank;
+    });
+    
+    jobs.forEach((j,i) => {
+      const scenes = j.scenes_count || 0;
+      const done = j.done_count || 0;
+      const opt = document.createElement('option');
+      opt.value = j.job_id;
+      opt.textContent = `${j.novel_title || '未命名'} | ${done}/${scenes}完成 — ${j.current_step || '未知'}`;
+      sel.appendChild(opt);
+      if (i === 0) opt.selected = true;
+    });
+    
+    if (jobs[0]) selectJob(jobs[0].job_id);
+  } catch(e) {
+    document.getElementById('jobSelector').innerHTML = '<option value="">⚠️ 服务器不可达</option>';
+    document.getElementById('sceneGrid').innerHTML = '<div class="empty-hint">⚠️ 无法连接服务器<br><small>请确认后端已启动: python main.py</small></div>';
+    addLog('无法获取任务列表: ' + e.message, 'error');
+  }
+}
+
+function onJobChange(id) { selectJob(id); }
+
+function selectJob(id) {
+  JOB_ID = id;
+  MONITOR_START = Date.now();
+  prevStatuses = {};
+  document.getElementById('logContainer').innerHTML = '';
+  addLog('切换至任务: ' + id, 'info');
+  startPolling();
+}
+
+function startPolling() {
+  clearTimeout(pollTimer);
+  if (autoRefresh && JOB_ID) fetchStatus();
+}
+
+function formatTime(t) {
+  const m = Math.floor(t/60000), s = Math.floor((t%60000)/1000);
+  return m + ':' + String(s).padStart(2,'0');
+}
+
+function addLog(msg, type) {
+  type = type || 'info';
+  const t = new Date().toLocaleTimeString('zh-CN', {hour12:false});
+  const container = document.getElementById('logContainer');
+  const row = document.createElement('div');
+  row.className = 'log-row ' + type;
+  row.innerHTML = '<span class="log-time">' + t + '</span><span class="log-msg">' + msg + '</span>';
+  container.prepend(row);
+  if (container.children.length > 50) container.lastChild.remove();
+}
+
+async function fetchStatus() {
+  if (!autoRefresh) return;
+  
+  try {
+    const [apiResp, comfyResp] = await Promise.all([
+      fetch(API_BASE + '/api/status/' + JOB_ID),
+      fetch(API_BASE + '/api/comfyui-queue').catch(() => null)
+    ]);
+    
+    if (!apiResp.ok) { addLog('API请求失败: ' + apiResp.status, 'error'); return; }
+    const data = await apiResp.json();
+    const scenes = data.scenes || [];
+    const total = scenes.length;
+    
+    let done = 0, imgOk = 0, active = 0;
+    const newLogs = [];
+    
+    scenes.forEach(s => {
+      const st = s.status || 'pending';
+      if (st === 'done') done++;
+      if (st === 'done' || st === 'generating_vid' || st === 'generating_tts') imgOk++;
+      if (st !== 'done' && st !== 'pending' && st !== 'error') active++;
+      
+      if (prevStatuses[s.id] && prevStatuses[s.id] !== st) {
+        const title = (s.title || '').substring(0, 20);
+        const emoji = st === 'done' ? '✅' : st === 'generating_img' ? '🎨' : st === 'generating_vid' ? '🎬' : st === 'generating_tts' ? '🔊' : st === 'error' ? '❌' : '📌';
+        const type = st === 'done' ? 'success' : st === 'error' ? 'error' : 'info';
+        addLog(`场景#${s.id} ${title}: ${emoji} ${st}`, type);
+      }
+      prevStatuses[s.id] = st;
+    });
+    
+    // Stats
+    document.getElementById('statDone').textContent = done;
+    document.getElementById('statImg').textContent = imgOk;
+    document.getElementById('statActive').textContent = active;
+    document.getElementById('statTotal').textContent = total;
+    
+    // Progress bar
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('progressPercent').textContent = pct + '%';
+    document.getElementById('progressLabel').textContent = data.current_step || '处理中';
+    if (data.error) {
+      document.getElementById('progressLabel').textContent = '❌ ' + data.error;
+    }
+    
+    // Elapsed
+    const elapsed = Date.now() - MONITOR_START;
+    document.getElementById('elapsed').textContent = '⏱ ' + formatTime(elapsed) + ' | 刷新中...';
+    
+    // ComfyUI
+    if (comfyResp && comfyResp.ok) {
+      const qdata = await comfyResp.json();
+      const qRun = (qdata.queue_running || []).length;
+      const qPend = (qdata.queue_pending || []).length;
+      const dot = document.getElementById('comfyuiDot');
+      const txt = document.getElementById('comfyuiText');
+      if (qRun > 0) {
+        dot.className = 'dot green';
+        txt.textContent = 'ComfyUI: 运行中 (' + qRun + '个) | 排队: ' + qPend;
+      } else if (qPend > 0) {
+        dot.className = 'dot orange';
+        txt.textContent = 'ComfyUI: 排队中 (' + qPend + '个)';
+      } else {
+        dot.className = 'dot orange';
+        txt.textContent = 'ComfyUI: 空闲';
+      }
+    } else {
+      document.getElementById('comfyuiDot').className = 'dot red';
+      document.getElementById('comfyuiText').textContent = 'ComfyUI: 不可达';
+    }
+    
+    // CosyVoice 2 check
+    try {
+      const cvResp = await fetch('http://localhost:50000/');
+      if (cvResp.ok) {
+        document.getElementById('cosyvoiceDot').className = 'dot green';
+        document.getElementById('cosyvoiceText').textContent = 'CosyVoice 2: 运行中';
+      } else {
+        document.getElementById('cosyvoiceDot').className = 'dot red';
+        document.getElementById('cosyvoiceText').textContent = 'CosyVoice 2: 不可达';
+      }
+    } catch(e) {
+      document.getElementById('cosyvoiceDot').className = 'dot red';
+      document.getElementById('cosyvoiceText').textContent = 'CosyVoice 2: 不可达';
+    }
+    
+    // Render scene cards
+    renderScenes(scenes, done, total);
+    
+    if (done >= total && total > 0) {
+      addLog('🏁 全部生成完成！', 'success');
+      document.getElementById('autoRefresh').checked = false;
+      autoRefresh = false;
+      document.getElementById('progressLabel').textContent = '✅ 全部完成！';
+      document.getElementById('elapsed').textContent = '⏱ 总耗时: ' + formatTime(elapsed);
+    }
+  } catch(e) {
+    addLog('请求异常: ' + e.message, 'error');
+  }
+  
+  if (autoRefresh) pollTimer = setTimeout(fetchStatus, POLL_INTERVAL);
+}
+
+function renderScenes(scenes, done, total) {
+  const grid = document.getElementById('sceneGrid');
+  if (scenes.length === 0) {
+    grid.innerHTML = '<div class="empty-hint">暂无场景数据</div>';
+    return;
+  }
+  
+  const imgBase = API_BASE + '/output/' + JOB_ID;
+  
+  grid.innerHTML = scenes.map((s, i) => {
+    const st = s.status || 'pending';
+    let statusClass, statusText, cardClass;
+    switch(st) {
+      case 'done': statusClass='status-done'; statusText='✅ 完成'; cardClass='done'; break;
+      case 'generating_img': statusClass='status-generating'; statusText='🖼️ 生成图片'; cardClass='active'; break;
+      case 'generating_vid': statusClass='status-video'; statusText='🎬 生成视频'; cardClass='active'; break;
+      case 'generating_tts': statusClass='status-video'; statusText='🔊 配音'; cardClass='active'; break;
+      case 'error': statusClass='status-error'; statusText='❌ 失败'; cardClass='error'; break;
+      default: statusClass='status-pending'; statusText='⏳ 等待'; cardClass='';
+    }
+    
+    let preview = '';
+    if (st === 'done' || st === 'generating_vid' || st === 'generating_tts') {
+      if (s.image_path) {
+        const imgSrc = '/output/' + JOB_ID + '/' + s.image_path.split(/[\\/]/).slice(-2).join('/');
+        preview = `<img src="${imgSrc}" alt="场景${s.id}" loading="lazy">`;
+      }
+    }
+    if (!preview) {
+      const icon = st === 'generating_img' ? '🎨' : st === 'generating_vid' ? '🎬' : st === 'error' ? '❌' : '⏳';
+      preview = `<div class="preview-placeholder">
+        <div>${icon}<br>${statusText}<br>${st === 'generating_img' || st === 'generating_vid' ? '<div class="loading-bar"></div>' : ''}</div>
+      </div>`;
+    }
+    
+    return `<div class="scene-card ${cardClass}">
+      <div class="scene-header">
+        <span class="scene-id">#${String(s.id).padStart(2,'0')}</span>
+        <span class="scene-status ${statusClass}">${statusText}</span>
+      </div>
+      <div class="scene-title">${s.title || '场景' + s.id}</div>
+      <div class="scene-preview">${preview}</div>
+    </div>`;
+  }).join('');
+}
+
+// Start
+initJobs();
+</script>
+</body>
+</html>

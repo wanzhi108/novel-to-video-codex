@@ -1,0 +1,57 @@
+{
+  "title": "被辞退那天，我写的代码卖了八千万",
+  "shots": [
+    {
+      "id": 1,
+      "scene": 1,
+      "base_kf": "shot_01_kf.png",
+      "emotion": "stern middle-aged boss Wang furiously slams a folder, young subordinate Xiao Yang with black-framed glasses standing head bowed, tense office",
+      "segments": [
+        {"kf": "shot_01_kf.png", "camera": "slow cinematic push-in, camera gradually moves closer to the subject", "emotion": "wide shot: boss Wang behind desk, Xiao Yang standing head bowed at the door, tense oppressive office, fluorescent lighting"},
+        {"kf": "shot_01_kf_wang.png", "camera": "static framing with subtle handheld sway", "emotion": "medium close-up of stern boss Wang, angry expression, slamming a folder on the desk, harsh fluorescent light"},
+        {"kf": "shot_01_kf_yang.png", "camera": "slow cinematic push-in to the face", "emotion": "close-up of young Xiao Yang with black-framed glasses, head bowed, submissive posture, side light on face"},
+        {"kf": "shot_01_kf.png", "camera": "slow pull-out revealing the whole office", "emotion": "wide shot: boss Wang behind desk, Xiao Yang turning to leave, oppressive office atmosphere"}
+      ]
+    },
+    {
+      "id": 2,
+      "scene": 2,
+      "base_kf": "shot_02_kf.png",
+      "emotion": "young man with black-framed glasses (Xiao Yang) alone in a dim empty office at night calmly shutting down his laptop, warm desk lamp glow, cool blue moonlight",
+      "segments": [
+        {"kf": "shot_02_kf.png", "camera": "slow cinematic pull-out, revealing more of the empty office", "emotion": "wide shot: empty office at night, Xiao Yang alone at desk, cool blue moonlight from window"},
+        {"kf": "shot_02_kf.png", "camera": "slow lateral tracking shot, camera drifts sideways", "emotion": "medium shot: Xiao Yang sitting at desk, warm desk lamp glow on face, quiet moody atmosphere"},
+        {"kf": "shot_02_kf_face.png", "camera": "slow cinematic push-in to the face", "emotion": "extreme close-up of Xiao Yang face, black-framed glasses, calm determined expression, warm lamp glow"},
+        {"kf": "shot_02_kf_hands.png", "camera": "gentle top-down tilt", "emotion": "close-up of hands calmly closing a laptop lid, warm desk lamp, dark office"},
+        {"kf": "shot_02_kf.png", "camera": "slow tilt-up revealing the window", "emotion": "shot of window with cool blue moonlight, empty office silhouette"}
+      ]
+    },
+    {
+      "id": 3,
+      "scene": 3,
+      "base_kf": "shot_03_kf.png",
+      "emotion": "dramatic corporate meeting room with large presentation screen showing winning bid, boss Wang shocked, Xiao Yang calm confident",
+      "segments": [
+        {"kf": "shot_03_kf.png", "camera": "slow cinematic push-in, camera moves closer to the screen", "emotion": "wide shot: meeting room, large screen showing winning bid and rising chart, dramatic side lighting"},
+        {"kf": "shot_03_kf_wang.png", "camera": "static framing with subtle handheld sway", "emotion": "close-up of boss Wang, shocked wide-eyed open-mouth expression, dramatic cinematic lighting"},
+        {"kf": "shot_03_kf_yang.png", "camera": "slow cinematic push-in to the face", "emotion": "close-up of Xiao Yang, calm confident expression, arms at sides, triumphant mood"},
+        {"kf": "shot_03_kf.png", "camera": "slow zoom-in to the screen", "emotion": "detail of presentation screen showing winning bid amount and rising chart"},
+        {"kf": "shot_03_kf.png", "camera": "gentle orbiting camera, slight arc", "emotion": "two-shot: boss Wang and Xiao Yang in same frame, tense confrontation, dramatic lighting"}
+      ]
+    },
+    {
+      "id": 4,
+      "scene": 4,
+      "base_kf": "shot_04_kf.png",
+      "emotion": "young man with black-framed glasses (Xiao Yang) walking out through a modern glass company entrance into city night, golden backlit rim light, bokeh skyline",
+      "segments": [
+        {"kf": "shot_04_kf.png", "camera": "slow cinematic push-in", "emotion": "medium shot: Xiao Yang seen through modern glass company door, confident posture"},
+        {"kf": "shot_04_kf_profile.png", "camera": "static framing, golden rim light", "emotion": "side profile of Xiao Yang walking, golden backlit rim light, confident expression"},
+        {"kf": "shot_04_kf.png", "camera": "slow cinematic pull-out into the city", "emotion": "wide shot: Xiao Yang walking into city night, bokeh skyline behind, aspirational mood"}
+      ]
+    }
+  ],
+  "scenes_narration": {
+    "1": "", "2": "", "3": "", "4": ""
+  }
+}

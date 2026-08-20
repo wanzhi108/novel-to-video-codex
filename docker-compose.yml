@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  # ComfyUI 后端（图片/视频生成引擎）
+  comfyui:
+    image: ghcr.io/saladtechnologies/comfyui:latest
+    container_name: novel2vid-comfyui
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    ports:
+      - "8188:8188"
+    volumes:
+      - ./models:/ComfyUI/models
+      - ./comfyui_output:/ComfyUI/output
+      - ./comfyui_input:/ComfyUI/input
+      - ./comfyui_custom_nodes:/ComfyUI/custom_nodes
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # Novel2Vid Web 应用
+  app:
+    build: .
+    container_name: novel2vid-app
+    ports:
+      - "8190:8190"
+    environment:
+      - COMFYUI_URL=http://comfyui:8188
+      - COMFYUI_MODELS_DIR=/models
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+    volumes:
+      - ./output:/app/output
+      - ./models:/models:ro
+    depends_on:
+      - comfyui
+    restart: unless-stopped

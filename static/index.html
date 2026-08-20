@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache">
+<title>Novel2Vid Studio v9 — 小说转视频</title>
+<link rel="stylesheet" href="/css/studio.css">
+</head>
+<body>
+
+<!-- Toast -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- App Grid -->
+<div class="app">
+
+<!-- ========== 左侧栏: 配置 ========== -->
+<div class="sidebar">
+  <div class="brand">
+    <h1>Novel2Vid</h1>
+    <span class="ver">v9</span>
+  </div>
+
+  <!-- 模式 -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">生成模式</span></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm mode-btn active" data-mode="balanced" onclick="setMode('balanced')" style="flex:1">标准</button>
+      <button class="btn btn-outline btn-sm mode-btn" data-mode="draft" onclick="setMode('draft')" style="flex:1">快速</button>
+      <button class="btn btn-outline btn-sm mode-btn" data-mode="quality" onclick="setMode('quality')" style="flex:1">品质</button>
+    </div>
+  </div>
+
+  <!-- 风格+模型 -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">风格 & 模型</span></div>
+    <select id="styleSelect" onchange="setStyle(this.value)" style="margin-bottom:8px">
+      <option value="cinematic">电影写实 (推荐)</option>
+      <option value="realistic">照片级写实</option>
+      <option value="anime">动漫/漫剧</option>
+      <option value="ink">水墨/古风</option>
+    </select>
+    <div id="styleHint" class="text-sm text-dim">电影级写实 | 红果短剧首选</div>
+
+    <select class="mt-12" onchange="state.model=this.value;refreshOpts()" id="modelSelect">
+      <option value="animagine-xl-4.0">animagine-xl-4.0 动漫</option>
+      <option value="RealVisXL_V4.0">RealVisXL_V4.0 写实</option>
+    </select>
+  </div>
+
+  <!-- 管线配置 -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">管线配置</span>
+      <button class="btn btn-ghost btn-sm" onclick="quickPreset('optimal')">⚡ 最优</button>
+    </div>
+    <label><input type="checkbox" data-opt="use_ipadapter" checked> IP-Adapter 角色一致性 <span class="badge badge-success" id="s1Badge">IP-Adapter</span></label>
+    <label><input type="checkbox" data-opt="use_hires_fix" checked> Hi-res 超分辨率</label>
+    <label><input type="checkbox" data-opt="use_multi_shot" checked> 多镜头 (3机位推镜)</label>
+    <label><input type="checkbox" data-opt="smart_dubbing" checked> 多角色TTS配音</label>
+    <label><input type="checkbox" data-opt="use_color_grading" checked> 色彩分级</label>
+    <label><input type="checkbox" data-opt="use_fade_transition" checked> 淡入淡出转场</label>
+    <label><input type="checkbox" data-opt="tts_enabled" checked> TTS字幕</label>
+  </div>
+
+  <!-- API Key -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">API Key</span></div>
+    <input type="password" id="apiKey" placeholder="DeepSeek Key (可留空)">
+  </div>
+
+  <!-- 按钮 -->
+  <button class="btn btn-primary btn-block btn-lg" id="genBtn" onclick="startGenerate()" style="padding:14px;font-size:15px">
+    开始生成 · Ctrl+Enter
+  </button>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-outline btn-sm" style="flex:1" onclick="cancelGeneration()">取消</button>
+    <button class="btn btn-ghost btn-sm" onclick="checkHealth()">测试连接</button>
+    <a href="/monitor.html" class="btn btn-ghost btn-sm">监控</a>
+  </div>
+  <div id="vramDisp" class="text-xs text-muted" style="text-align:center">VRAM: 检测中...</div>
+</div>
+
+<!-- ========== 中央: 输入+预览 ========== -->
+<div class="main">
+  <div class="card" style="flex:1;display:flex;flex-direction:column">
+    <div class="card-header">
+      <span class="card-title">小说文本</span>
+      <span class="text-sm text-muted" id="charCount">0字</span>
+    </div>
+    <textarea id="novelInput" placeholder="粘贴小说文本，或拖拽 .txt 文件到这里...&#10;&#10;最少10字即可生成" style="flex:1;height:100%"></textarea>
+  </div>
+
+  <!-- 视频预览 -->
+  <div class="video-box hidden" id="videoBox">
+    <video id="playerVideo" controls autoplay loop></video>
+  </div>
+  <div class="video-box" id="videoEmpty">
+    <div class="empty-state">
+      <div class="ico">🎬</div>
+      <div class="text-muted">生成完成后视频将在此播放</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 右侧栏: 进度+历史 ========== -->
+<div class="panel">
+  <!-- 进度 -->
+  <div class="card hidden" id="progressPanel">
+    <div class="card-header"><span class="card-title">生成进度</span></div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="eta-row mt-12">
+      <span>剩余</span><span class="eta-val" id="etaDisp">--</span>
+      <span class="text-muted">| 已用</span><span class="mono text-dim" id="etaElapsed">--</span>
+    </div>
+    <div class="text-sm text-dim mt-8" id="progressText">准备中...</div>
+  </div>
+
+  <!-- 场景列表 -->
+  <div class="card" style="flex:1;overflow-y:auto">
+    <div class="card-header">
+      <span class="card-title">场景状态</span>
+      <span class="text-xs text-muted" id="sceneCountDisp"></span>
+    </div>
+    <div class="flex flex-col gap-8" id="sceneList">
+      <div class="text-sm text-muted" style="text-align:center;padding:20px">提交后在此显示</div>
+    </div>
+  </div>
+
+  <!-- 历史 -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">历史记录</span></div>
+    <div id="historyList" class="flex flex-col gap-4" style="max-height:160px;overflow-y:auto"></div>
+  </div>
+</div>
+
+</div>
+
+<script src="/js/studio.js"></script>
+</body>
+</html>

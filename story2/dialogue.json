@@ -1,0 +1,27 @@
+{
+  "title": "被辞退那天，我写的代码卖了八千万",
+  "voices": {
+    "wang":       {"ref_wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn07_男_24_安徽.wav", "mood": ""},
+    "narration": {"ref_wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn03_女_36_四川.wav", "mood": ""},
+    "yang":       {"ref_wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn06_男_20_上海.wav", "mood": ""}
+  },
+  "scenes": {
+    "1": [
+      {"speaker": "wang", "text": "小杨，你这方案，狗都不要。明天不用来了。"},
+      {"speaker": "narration", "text": "所有人都觉得，他完了。"}
+    ],
+    "2": [
+      {"speaker": "yang", "text": "好，我走。但我写的算法，已经留在服务器上了。"},
+      {"speaker": "narration", "text": "没人当真。可那行代码，三个月后值八千万。"}
+    ],
+    "3": [
+      {"speaker": "wang", "text": "这…这中标的是你？！"},
+      {"speaker": "yang", "text": "王总，您亲口说的，狗都不要的方案。"},
+      {"speaker": "narration", "text": "曾经被嫌弃的人，成了最大股东。"}
+    ],
+    "4": [
+      {"speaker": "yang", "text": "下次开会，记得给我留把椅子。"},
+      {"speaker": "narration", "text": "他的故事，才刚开始。上滑，看全集。"}
+    ]
+  }
+}

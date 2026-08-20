@@ -1,0 +1,458 @@
+{
+  "4528": {
+    "class_type": "LTXVConcatAVLatent",
+    "inputs": {
+      "video_latent": [
+        "3059",
+        0
+      ],
+      "audio_latent": [
+        "3980",
+        0
+      ]
+    }
+  },
+  "4976": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler_cfg_pp"
+    }
+  },
+  "4964": {
+    "class_type": "CFGGuider",
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "5008",
+        0
+      ],
+      "positive": [
+        "1241",
+        0
+      ],
+      "negative": [
+        "1241",
+        1
+      ]
+    }
+  },
+  "4828": {
+    "class_type": "CFGGuider",
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "5008",
+        0
+      ],
+      "positive": [
+        "1241",
+        0
+      ],
+      "negative": [
+        "1241",
+        1
+      ]
+    }
+  },
+  "4831": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler_ancestral_cfg_pp"
+    }
+  },
+  "4829": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "4832",
+        0
+      ],
+      "guider": [
+        "4828",
+        0
+      ],
+      "sampler": [
+        "4831",
+        0
+      ],
+      "sigmas": [
+        "4984",
+        0
+      ],
+      "latent_image": [
+        "4528",
+        0
+      ]
+    }
+  },
+  "4985": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "0.85, 0.7250, 0.4219, 0.0"
+    }
+  },
+  "4969": {
+    "class_type": "LTXVConcatAVLatent",
+    "inputs": {
+      "video_latent": [
+        "4975",
+        0
+      ],
+      "audio_latent": [
+        "4845",
+        1
+      ]
+    }
+  },
+  "4845": {
+    "class_type": "LTXVSeparateAVLatent",
+    "inputs": {
+      "av_latent": [
+        "4829",
+        0
+      ]
+    }
+  },
+  "4974": {
+    "class_type": "LatentUpscaleModelLoader",
+    "inputs": {
+      "model_name": "ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
+    }
+  },
+  "4971": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "4967",
+        0
+      ],
+      "guider": [
+        "4964",
+        0
+      ],
+      "sampler": [
+        "4976",
+        0
+      ],
+      "sigmas": [
+        "4985",
+        0
+      ],
+      "latent_image": [
+        "4969",
+        0
+      ]
+    }
+  },
+  "4973": {
+    "class_type": "LTXVSeparateAVLatent",
+    "inputs": {
+      "av_latent": [
+        "4971",
+        0
+      ]
+    }
+  },
+  "4851": {
+    "class_type": "VAEDecodeTiled",
+    "inputs": {
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 512,
+      "temporal_overlap": 4,
+      "samples": [
+        "4973",
+        0
+      ],
+      "vae": [
+        "3940",
+        2
+      ]
+    }
+  },
+  "4848": {
+    "class_type": "LTXVAudioVAEDecode",
+    "inputs": {
+      "samples": [
+        "4973",
+        1
+      ],
+      "audio_vae": [
+        "4010",
+        0
+      ]
+    }
+  },
+  "2483": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "4982",
+        0
+      ],
+      "text": [
+        "5013",
+        0
+      ]
+    }
+  },
+  "1241": {
+    "class_type": "LTXVConditioning",
+    "inputs": {
+      "positive": [
+        "2483",
+        0
+      ],
+      "negative": [
+        "2612",
+        0
+      ],
+      "frame_rate": [
+        "4989",
+        0
+      ]
+    }
+  },
+  "2612": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{NEGATIVE_PROMPT}}",
+      "clip": [
+        "4982",
+        0
+      ]
+    }
+  },
+  "5008": {
+    "class_type": "LTXVChunkFeedForward",
+    "inputs": {
+      "chunks": 4,
+      "dim_threshold": 4096,
+      "model": [
+        "5007",
+        0
+      ]
+    }
+  },
+  "5007": {
+    "class_type": "ModelPatchTorchSettings",
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "4922",
+        0
+      ]
+    }
+  },
+  "4989": {
+    "class_type": "PrimitiveFloat",
+    "inputs": {
+      "value": "{{FRAME_RATE}}"
+    }
+  },
+  "5011": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "{{FILENAME_PREFIX}}",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "4851",
+        0
+      ],
+      "audio": [
+        "4848",
+        0
+      ]
+    }
+  },
+  "4975": {
+    "class_type": "LTXVLatentUpsampler",
+    "inputs": {
+      "samples": [
+        "4845",
+        0
+      ],
+      "upscale_model": [
+        "4974",
+        0
+      ],
+      "vae": [
+        "3940",
+        2
+      ]
+    }
+  },
+  "4010": {
+    "class_type": "LTXVAudioVAELoader",
+    "inputs": {
+      "ckpt_name": "{{CHECKPOINT}}"
+    }
+  },
+  "3940": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "{{CHECKPOINT}}"
+    }
+  },
+  "4922": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "lora_name": "ltx-2.3-22b-distilled-lora-384.safetensors",
+      "strength_model": 0.5,
+      "model": [
+        "3940",
+        0
+      ]
+    }
+  },
+  "4982": {
+    "class_type": "LTXAVTextEncoderLoader",
+    "inputs": {
+      "text_encoder": "{{TEXT_ENCODER}}",
+      "ckpt_name": "{{CHECKPOINT}}",
+      "device": "default"
+    }
+  },
+  "4967": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": "{{SEED}}"
+    }
+  },
+  "4832": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": "{{SEED}}"
+    }
+  },
+  "5013": {
+    "class_type": "CR Text",
+    "inputs": {
+      "text": "{{POSITIVE_PROMPT}}"
+    }
+  },
+  "4987": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": true
+    }
+  },
+  "3980": {
+    "class_type": "LTXVEmptyLatentAudio",
+    "inputs": {
+      "batch_size": 1,
+      "audio_vae": [
+        "4010",
+        0
+      ],
+      "frames_number": [
+        "4988",
+        0
+      ],
+      "frame_rate": [
+        "4983",
+        0
+      ]
+    }
+  },
+  "4984": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+    }
+  },
+  "5042": {
+    "class_type": "CR Text",
+    "inputs": {
+      "text": "You are an expert cinematic video prompt writer. Write a rich, detailed English prompt (5-8 sentences) that describes camera movement, character actions with spatial displacement, lighting changes, and atmosphere. The prompt should read like a continuous cinematic description. Output ONLY the prompt text, no explanation."
+    }
+  },
+  "5041": {
+    "class_type": "CR Text",
+    "inputs": {
+      "text": "Role\n\nYou are an LTX-2 Text-to-Video prompt expert. Convert the user's [scene description] and [dialogue] into a coherent English paragraph (5-7 sentences) with clear spatial movement. The character MUST move through the scene (walk, run, fly, jump) - NEVER stay静止. Design a 10-second action sequence with: preparation → movement → climax → landing.\n\nRules:\n- MUST include spatial displacement (stride forward, sprint, leap, etc.)\n- NO 'he stands/she waves' - must have position change\n- Keep Chinese dialogue as-is in the prompt\n- Format: [Shot] opens on [Subject] in [Environment]. First, [action]. Then, [movement with displacement]. Before [climax]. Finally [landing/arrival].\n\nOutput: One coherent English paragraph."
+    }
+  },
+  "3059": {
+    "class_type": "EmptyLTXVLatentVideo",
+    "inputs": {
+      "batch_size": 1,
+      "width": [
+        "5045",
+        0
+      ],
+      "height": [
+        "5046",
+        0
+      ],
+      "length": [
+        "4988",
+        0
+      ]
+    }
+  },
+  "5046": {
+    "class_type": "easy simpleMath",
+    "inputs": {
+      "value": "a/2",
+      "a": [
+        "5020",
+        0
+      ]
+    }
+  },
+  "5018": {
+    "class_type": "INTConstant",
+    "inputs": {
+      "value": "{{WIDTH_BASE}}"
+    }
+  },
+  "5045": {
+    "class_type": "easy simpleMath",
+    "inputs": {
+      "value": "a/2",
+      "a": [
+        "5018",
+        0
+      ]
+    }
+  },
+  "5020": {
+    "class_type": "INTConstant",
+    "inputs": {
+      "value": "{{HEIGHT_BASE}}"
+    }
+  },
+  "4983": {
+    "class_type": "CM_FloatToInt",
+    "inputs": {
+      "a": [
+        "4989",
+        0
+      ]
+    }
+  },
+  "4988": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": [
+        "5022",
+        0
+      ]
+    }
+  },
+  "5022": {
+    "class_type": "INTConstant",
+    "inputs": {
+      "value": "{{LENGTH}}"
+    }
+  }
+}
