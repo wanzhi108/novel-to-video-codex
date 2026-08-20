@@ -17,6 +17,15 @@ import gc  # v8.7.1: 移到顶部，避免循环内重复导入
 from pydub import AudioSegment
 from pydub.effects import normalize, compress_dynamic_range
 
+# 源码模式以仓库根为项目根；打包模式以 _MEIPASS 为只读资源根。
+# 同时把仓库根和 scripts/ 加入 sys.path，保证 python scripts/main.py
+# 也能导入 app/*、storage、video_engine、cloud_video 等模块。
+PROJECT_ROOT = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+if str(PROJECT_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
 # Windows 控制台 UTF-8 编码修复（防止 print emoji 时 GBK 编码崩溃）
 if sys.platform == "win32":
     try:
@@ -62,13 +71,8 @@ COMFYUI_WS_URL = COMFYUI_URL.replace("http", "ws").replace("https", "wss")
 #   3. 默认回退路径
 _default_models = os.environ.get("COMFYUI_MODELS_DIR", "")
 if not _default_models:
-    # 尝试基于 URL 推断
-    if "8188" in COMFYUI_URL:
-        _default_models = "D:/ComfyUI-WorkFisher-V2/ComfyUI/models"
-    elif "8190" in COMFYUI_URL:
-        _default_models = str(Path(__file__).parent.parent / "ComfyUI" / "models")
-    else:
-        _default_models = str(Path(__file__).parent.parent / "ComfyUI" / "models")
+    # 默认使用仓库旁 ComfyUI/models；可用 COMFYUI_MODELS_DIR 覆盖
+    _default_models = str(PROJECT_ROOT / "ComfyUI" / "models")
 COMFYUI_MODELS_DIR = Path(_default_models)
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 DEEPSEEK_DEFAULT_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
@@ -93,11 +97,11 @@ KNOWN_MODEL_SIZES = {
 MIN_SAFETENSORS_SIZE = 1_000_000_000  # 1GB，低于此值认为损坏
 # 打包模式：工作流在 _MEIPASS（资源目录），输出到 exe 同级目录（持久化）
 if getattr(sys, "frozen", False):
-    WORKFLOW_DIR = Path(sys._MEIPASS) / "comfyui_workflows"
+    WORKFLOW_DIR = PROJECT_ROOT / "comfyui"
     OUTPUT_DIR = Path(sys.executable).parent / "output"
 else:
-    WORKFLOW_DIR = Path(__file__).parent / "comfyui_workflows"
-    OUTPUT_DIR = Path(__file__).parent / "output"
+    WORKFLOW_DIR = PROJECT_ROOT / "comfyui"
+    OUTPUT_DIR = PROJECT_ROOT / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # 竖屏 9:16 尺寸 - 红果漫剧标准 1080×1920
@@ -939,28 +943,18 @@ def find_ffmpeg() -> str:
     #    规避「后端进程 PATH 不含 ffmpeg」导致 find_ffmpeg 返回空、Ken Burns 静默失效、
     #    进而回退到 22B 视频模型在 8GB 显存下 OOM 的问题。
     try:
-        # WinGet 安装的 Gyan.FFmpeg（本机实际位置）
+        # WinGet 安装的 Gyan.FFmpeg（通配搜索，不依赖具体版本号）
         wg = Path(os.path.expanduser("~")) / "AppData" / "Local" / "Microsoft" / "WinGet" / "Packages"
         if wg.exists():
             for p in wg.rglob("ffmpeg.exe"):
                 if Path(str(p)).exists():
                     return str(p)
         # ComfyUI 自带 ffmpeg
-        for base in [os.environ.get("COMFYUI_PATH", ""), "D:/ComfyUI-WorkFisher-V2/ComfyUI", "C:/ComfyUI"]:
+        for base in [os.environ.get("COMFYUI_PATH", ""), str(Path.home() / "ComfyUI"), "C:/ComfyUI"]:
             if base:
                 f = Path(base) / "ffmpeg" / "ffmpeg.exe"
                 if f.exists():
                     return str(f)
-    except Exception:
-        pass
-    # 5. v12.1: 本机已知 ffmpeg 绝对路径兜底（不依赖 ~ / PATH / 环境变量，
-    #    规避后台进程用户上下文差异导致 find_ffmpeg 返回空、Ken Burns 静默失效）
-    try:
-        known = (Path("C:/Users/Lenovo/AppData/Local/Microsoft/WinGet/Packages")
-                 / "Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe"
-                 / "ffmpeg-8.1.1-full_build" / "bin" / "ffmpeg.exe")
-        if known.exists():
-            return str(known)
     except Exception:
         pass
     return ""
@@ -1785,25 +1779,44 @@ async def upscale_video(input_path: str, output_path: str, target_width: int = 1
         return input_path
 
 # ─── P2-⑨: 口型同步（MuseTalk / SadTalker / Echomimic）──────────────────────────
+def _resolve_tool_dir(env_key: str, default_name: str) -> str:
+    """解析外部工具目录：环境变量 > 仓库 tools/ > 用户目录 ai-tools/"""
+    env_dir = os.environ.get(env_key, "").strip()
+    if env_dir:
+        return env_dir
+    for cand in (PROJECT_ROOT / "tools" / default_name,
+                 Path.home() / "ai-tools" / default_name):
+        if cand.exists():
+            return str(cand)
+    return str(PROJECT_ROOT / "tools" / default_name)
+
 _LIPSYNC_TOOLS = {
     "musetalk": {
-        "weight_path": "D:/ai-tools/MuseTalk",
+        "weight_path": _resolve_tool_dir("MUSETALK_DIR", "MuseTalk"),
         "script": "python -m scripts.inference --inference_config {cfg} --result_dir {output_dir} --version v15",
     },
     "sadtalker": {
-        "weight_path": "D:/ai-tools/SadTalker",
+        "weight_path": _resolve_tool_dir("SADTALKER_DIR", "SadTalker"),
         "script": "python inference.py --driven_audio {audio} --source_image {face} --result_dir {output_dir} --enhancer gfpgan",
     },
 }
 
 # ComfyUI 自带 Python（已含 torch/CUDA/insightface/librosa 等，复用其环境跑 MuseTalk/SadTalker）
-COMFYUI_PYTHON = "D:/ComfyUI-WorkFisher-V2/python/python.exe"
+COMFYUI_PYTHON = os.environ.get("COMFYUI_PYTHON", "")
+if not COMFYUI_PYTHON:
+    for _cand in (PROJECT_ROOT / "ComfyUI" / "python" / "python.exe",
+                  Path.home() / "ComfyUI" / "python" / "python.exe"):
+        if _cand.exists():
+            COMFYUI_PYTHON = str(_cand)
+            break
 
 # MuseTalk 专属 venv（Python 3.12 + torch 2.7.0+cu128 适配 RTX 5070 Blackwell sm_120，
 # + mmcv-lite 2.2.0 + mmpose/mmengine 纯 Python 版，启动期 stub 屏蔽 mmcv CUDA ext + 强制
 # torch.load(weights_only=False) + numpy 2.4.1 以兼容 numba）。与 ComfyUI 的 torch 隔离。
 # 注意：torch 2.2.2+cu121 在 sm_120 上无法运行 CUDA kernel，切勿回退。
-MUSE_TALK_PYTHON = "D:/ai-tools/MuseTalk/venv/Scripts/python.exe"
+MUSE_TALK_PYTHON = os.environ.get("MUSETALK_PYTHON", "")
+if not MUSE_TALK_PYTHON:
+    MUSE_TALK_PYTHON = str(Path(_LIPSYNC_TOOLS["musetalk"]["weight_path"]) / "venv" / "Scripts" / "python.exe")
 
 
 async def _detect_lipsync_tool() -> Optional[str]:
@@ -2170,7 +2183,7 @@ _BGM_MOOD_MAP = {
 
 def _find_mood_bgm_file(mood: str) -> str | None:
     """在 bgm/ 目录中查找匹配情绪的BGM文件，返回完整路径或 None"""
-    bgm_dir = Path(__file__).parent / "bgm"
+    bgm_dir = PROJECT_ROOT / "bgm"
     if not bgm_dir.exists():
         return None
     
@@ -2502,7 +2515,7 @@ async def _generate_procedural_sfx(name: str) -> str:
         audio = gen(duration_ms)
         if len(audio) < 10:
             return ""
-        sfx_dir = Path(__file__).parent / "sfx" / "_generated"
+        sfx_dir = PROJECT_ROOT / "sfx" / "_generated"
         sfx_dir.mkdir(parents=True, exist_ok=True)
         wav_path = sfx_dir / f"{name}.wav"
         audio.export(str(wav_path), format="wav")
@@ -2525,7 +2538,7 @@ async def add_scene_sfx(video_path: str, scene, output_path: str, sfx_volume: fl
         shutil.copy2(video_path, output_path)
         return output_path
     
-    sfx_dir = Path(__file__).parent / "sfx"
+    sfx_dir = PROJECT_ROOT / "sfx"
     sfx_paths = []  # v8.7.1: 初始化列表
     
     # v8.7: 程序化生成缺失的 SFX (sfx/ 目录为空时自动合成)
@@ -3207,7 +3220,7 @@ _CAMERA_MAP_SIMPLE = {
 
 # ─── v7.0 Ken Burns 视频动画 ───────────────────────────────
 # ─── v7.2 云端文生视频 ──────────────────────────────────────
-CLOUD_VIDEO_SCRIPT = Path(__file__).parent / "cloud_video.py"
+CLOUD_VIDEO_SCRIPT = PROJECT_ROOT / "scripts" / "cloud_video.py"
 
 async def _generate_cloud_t2v(scene, scene_dir: Path) -> str:
     """调用云端文生视频 API, 返回本地 mp4 路径或空字符串
@@ -6633,7 +6646,7 @@ async def update_settings(job_id: str, img_checkpoint: str = "", vid_checkpoint:
 # v12.1: Launcher 启动配置（与 launcher.py 共享 launcher_config.json）
 # 用于前端设置面板持久化 auto_cosyvoice 等启动项，launcher 下次启动时读取。
 # ───────────────────────────────────────────────────────────
-LAUNCHER_CONFIG_FILE = Path(__file__).parent / "launcher_config.json"
+LAUNCHER_CONFIG_FILE = PROJECT_ROOT / "launcher_config.json"
 
 def _read_launcher_config() -> dict:
     try:
@@ -8578,7 +8591,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     ass_path.write_text(ass_content, encoding="utf-8")
 
     # 字体目录 — 优先使用内嵌思源黑体
-    fonts_dir = Path(__file__).parent / "resources" / "fonts"
+    fonts_dir = PROJECT_ROOT / "resources" / "fonts"
     fonts_arg = f":fontsdir='{str(fonts_dir.as_posix()).replace(chr(39), '').replace(':', chr(92) + ':')}'" if fonts_dir.exists() else ""
     
     cmd = [
@@ -8761,7 +8774,7 @@ def _select_ambient_sound(scene_setting: str = "", scene_mood: str = "") -> str 
     Returns:
         环境音文件路径，或 None（无匹配）
     """
-    sfx_dir = Path(__file__).parent / "sfx" / "ambient"
+    sfx_dir = PROJECT_ROOT / "sfx" / "ambient"
     if not sfx_dir.exists():
         return None
     
@@ -9752,7 +9765,7 @@ async def merge_all_videos(job_id: str, bgm_path: str = "", bgm_volume: float = 
 @app.get("/api/bgm-list")
 async def list_bgm():
     """扫描BGM目录，返回可用背景音乐列表"""
-    bgm_dir = Path(__file__).parent / "bgm"
+    bgm_dir = PROJECT_ROOT / "bgm"
     bgm_dir.mkdir(exist_ok=True)
     bgms = []
     for path in sorted(bgm_dir.glob("*.mp3")):
@@ -9785,7 +9798,7 @@ async def list_bgm():
 @app.post("/api/bgm-upload")
 async def upload_bgm(file: UploadFile = File(...)):
     """上传BGM文件到BGM目录"""
-    bgm_dir = Path(__file__).parent / "bgm"
+    bgm_dir = PROJECT_ROOT / "bgm"
     bgm_dir.mkdir(exist_ok=True)
     if not file.filename.endswith(".mp3"):
         raise HTTPException(400, "只支持 MP3 格式")
@@ -11238,8 +11251,8 @@ class NoCacheStaticFiles(StaticFiles):
         return response
 
 # 优先使用 web/dist (新 React 前端)，回退到 static/ (旧前端)
-_WEB_DIST = Path(__file__).parent / "web" / "dist"
-_STATIC_DIR = Path(__file__).parent / "static"
+_WEB_DIST = PROJECT_ROOT / "web" / "dist"
+_STATIC_DIR = PROJECT_ROOT / "static"
 _SERVE_DIR = str(_WEB_DIST) if (_WEB_DIST / "index.html").exists() else str(_STATIC_DIR)
 app.mount("/", NoCacheStaticFiles(directory=_SERVE_DIR, html=True), name="static")
 

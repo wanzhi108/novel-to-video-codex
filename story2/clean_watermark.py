@@ -4,9 +4,10 @@
 比纯黑块更自然(延续桌面/地面/门厅的暗色)。
 """
 import os, glob
+from pathlib import Path
 from PIL import Image
 
-REF = "D:/CosyVoice2/jb_work/story2/refs"
+REF = Path(__file__).resolve().parent / "refs"
 
 
 def clean_one(path):

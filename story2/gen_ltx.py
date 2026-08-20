@@ -16,14 +16,15 @@ Phases:
 断点续传：dest 存在且 >10KB 则跳过。
 """
 import json, os, sys, time, gc, re, urllib.request, urllib.parse, subprocess, shutil, random, glob
+from pathlib import Path
 
 COMFY = "http://127.0.0.1:8188"
-ROOT = "D:/CosyVoice2/jb_work"
-PLANB = os.path.join(ROOT, "story2")
-WF_DIR = "C:/Users/Lenovo/Desktop/02_小说视频创作/novel-to-video/comfyui_workflows"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PLANB = Path(__file__).resolve().parent
+WF_DIR = PROJECT_ROOT / "comfyui"
 OUT = PLANB
-OUT_VID = os.path.join(OUT, "videos")
-LOG = os.path.join(PLANB, "genB_ltx.log")
+OUT_VID = OUT / "videos"
+LOG = OUT / "genB_ltx.log"
 
 # LTX 视频参数（沿用 planC 验证值）
 VID_W, VID_H = 960, 1728
@@ -49,7 +50,7 @@ CAMERA_MOVES = [
 # 每镜片段数（按配音时长 / 2.7s 估算：scene1 8.94s->4, scene2 11.78s->5, scene3 11.75s->5, scene4 8.02s->3）
 SEGMENTS = {1: 4, 2: 5, 3: 5, 4: 3}
 
-FF = shutil.which("ffmpeg") or "ffmpeg"
+FF = os.environ.get("FFMPEG_PATH") or shutil.which("ffmpeg") or "ffmpeg"
 plan = json.load(open(os.path.join(PLANB, "shots.json"), encoding="utf-8"))
 
 

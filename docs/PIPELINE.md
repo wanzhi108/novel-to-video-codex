@@ -123,7 +123,7 @@ python gen_dialogue.py
 # 2. 生成视频段（耗时数小时）
 python gen_ltx.py all
 # 可后台运行：
-/c/Users/Lenovo/.workbuddy/binaries/python/versions/3.13.12/python.exe gen_ltx.py all >> genB_ltx.log 2>&1 &
+python gen_ltx.py all >> genB_ltx.log 2>&1 &
 
 # 3. 合成成片
 python assemble.py

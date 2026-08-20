@@ -17,19 +17,16 @@ a = Analysis(
         # 旧版前端 (兼容回退)
         ('static', 'static'),
         # ComfyUI 工作流
-        ('comfyui_workflows', 'comfyui_workflows'),
-        # 图标资源 + 思源黑体字体
-        ('resources', 'resources'),
-        # 音频资源
-        ('bgm', 'bgm'),
-        ('sfx', 'sfx'),
+        ('comfyui', 'comfyui'),
+        # 后端脚本（包含 cloud_video.py 等运行时模块）
+        ('scripts', 'scripts'),
         # 环境配置模板
         ('.env.example', '.'),
         # app 模块
         ('app', 'app'),
     ],
     hiddenimports=[
-        'main',
+        'scripts.main',
         # v12.0: pywebview (内嵌 WebView2)
         'webview',
         'webview.platforms',
@@ -153,7 +150,7 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
-    icon='resources/luminaforge.ico',
+    # icon omitted: binary brand assets are not tracked in Git
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

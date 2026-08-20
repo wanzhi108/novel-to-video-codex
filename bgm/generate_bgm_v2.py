@@ -3,7 +3,7 @@ BGM v2.0 — 高品质合成配乐
 使用 ffmpeg 的 anoisesrc + sine + 多频段均衡器 + 混响模拟
 比 v1.0 和弦进行更自然，不再像耳鸣
 """
-import subprocess, shutil, asyncio
+import subprocess, shutil, asyncio, os
 from pathlib import Path
 
 BGM_DIR = Path(__file__).parent
@@ -85,12 +85,18 @@ BGM_CONFIGS = {
 }
 
 def find_ffmpeg():
-    p = shutil.which("ffmpeg")
-    if p:
+    p = shutil.which("ffmpeg") or os.environ.get("FFMPEG_PATH", "")
+    if p and Path(p).exists():
         return p
-    for path in ["D:/ComfyUI-WorkFisher-V2/ComfyUI/ffmpeg/ffmpeg.exe", "C:/ffmpeg/bin/ffmpeg.exe"]:
-        if Path(path).exists():
-            return path
+    candidates = [
+        Path(os.environ.get("COMFYUI_PATH", "")) / "ffmpeg" / "ffmpeg.exe",
+        Path.home() / "ComfyUI" / "ffmpeg" / "ffmpeg.exe",
+        Path("C:/ffmpeg/bin/ffmpeg.exe"),
+        Path("D:/ffmpeg/bin/ffmpeg.exe"),
+    ]
+    for path in candidates:
+        if path.exists():
+            return str(path)
     return None
 
 def generate_bgm(mood: str) -> bool:

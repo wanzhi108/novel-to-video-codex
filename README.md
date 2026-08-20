@@ -10,7 +10,7 @@
 |------|------|------|
 | **LuminaForge 桌面应用** | `scripts/` `app/` `web/` `static/` | FastAPI 后端 + React 前端，PyInstaller 打包为桌面 exe，提供 Web UI 管理视频生成全流程 |
 | **story2 管线脚本** | `story2/` | 独立 Python 脚本管线，直接通过 ComfyUI API + CosyVoice2 API + FFmpeg 生成视频，无需启动桌面应用 |
-| **CosyVoice2 集成** | `cosyvoice2/` | 改造版 TTS 服务端 + 中文参考音色库 |
+| **CosyVoice2 集成** | `cosyvoice2/` | 改造版 TTS 服务端（参考音按需放入 cn_refs/） |
 | **ComfyUI 工作流** | `comfyui/` | LTX I2V / 文生图等 JSON 工作流模板 + 低显存重启脚本 |
 
 ## 快速开始
@@ -29,7 +29,7 @@
 ```bat
 :: 双击 comfyui/restart_comfyui.bat
 :: 或手动启动：
-D:\ComfyUI-WorkFisher-V2\python\python.exe D:\ComfyUI-WorkFisher-V2\ComfyUI\main.py --lowvram --async-offload 2 --port 8188 --listen 127.0.0.1
+python "<ComfyUI 安装目录>\main.py" --lowvram --async-offload 2 --port 8188 --listen 127.0.0.1
 ```
 
 > **必须** 使用 `--lowvram --async-offload 2`，否则 LTX 22B 会 OOM 崩进程。
@@ -37,7 +37,7 @@ D:\ComfyUI-WorkFisher-V2\python\python.exe D:\ComfyUI-WorkFisher-V2\ComfyUI\main
 ### 2. 启动 CosyVoice2 TTS 服务
 
 ```bash
-cd D:/CosyVoice2
+cd <CosyVoice2 安装目录>
 cosy_env/Scripts/python.exe server.py  # 端口 50000
 ```
 
@@ -127,13 +127,15 @@ novel-to-video-codex/
 └── install.ps1 / uninstall.ps1  # Windows 安装/卸载
 ```
 
+> 二进制素材（BGM、SFX、字体、参考音）不入 Git，按需用 `bgm/generate_bgm.py`、`sfx/generate_sfx.py` 生成或从外部下载后放入对应目录。
+
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `DEEPSEEK_API_KEY` | - | DeepSeek API Key（AI 分镜分析，必填） |
 | `COMFYUI_URL` | `http://127.0.0.1:8188` | ComfyUI 地址 |
-| `COMFYUI_MODELS_DIR` | `D:/ComfyUI-WorkFisher-V2/ComfyUI/models` | 模型目录 |
+| `COMFYUI_MODELS_DIR` | 留空（自动使用仓库内 `ComfyUI/models`） | 模型目录 |
 
 ## 技术栈
 

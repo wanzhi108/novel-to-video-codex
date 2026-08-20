@@ -1,7 +1,7 @@
 [
   {
     "id": "cn01_女_21_辽宁",
-    "wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn01_女_21_辽宁.wav",
+    "wav": "cn01_女_21_辽宁.wav",
     "ref_text": "说我有百万富翁的气质",
     "text": "夜色温柔，灯光昏黄，她轻轻翻开那本旧日记，往事如潮水般涌来。",
     "gender": "女",
@@ -9,7 +9,7 @@
   },
   {
     "id": "cn02_女_20_贵州",
-    "wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn02_女_20_贵州.wav",
+    "wav": "cn02_女_20_贵州.wav",
     "ref_text": "日均有效报案量",
     "text": "夜色温柔，灯光昏黄，她轻轻翻开那本旧日记，往事如潮水般涌来。",
     "gender": "女",
@@ -17,7 +17,7 @@
   },
   {
     "id": "cn03_女_36_四川",
-    "wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn03_女_36_四川.wav",
+    "wav": "cn03_女_36_四川.wav",
     "ref_text": "阿黄和丹姐下去说我有约要带上她们",
     "text": "夜色温柔，灯光昏黄，她轻轻翻开那本旧日记，往事如潮水般涌来。",
     "gender": "女",
@@ -25,7 +25,7 @@
   },
   {
     "id": "cn04_女_21_新疆",
-    "wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn04_女_21_新疆.wav",
+    "wav": "cn04_女_21_新疆.wav",
     "ref_text": "我得回宣化过生日去了",
     "text": "夜色温柔，灯光昏黄，她轻轻翻开那本旧日记，往事如潮水般涌来。",
     "gender": "女",
@@ -33,7 +33,7 @@
   },
   {
     "id": "cn05_女_21_Shandong",
-    "wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn05_女_21_Shandong.wav",
+    "wav": "cn05_女_21_Shandong.wav",
     "ref_text": "黄永康那笔钱还没有到账吗",
     "text": "夜色温柔，灯光昏黄，她轻轻翻开那本旧日记，往事如潮水般涌来。",
     "gender": "女",
@@ -41,7 +41,7 @@
   },
   {
     "id": "cn06_男_20_上海",
-    "wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn06_男_20_上海.wav",
+    "wav": "cn06_男_20_上海.wav",
     "ref_text": "不要和我扯永远不想说废话",
     "text": "夜色温柔，灯光昏黄，她轻轻翻开那本旧日记，往事如潮水般涌来。",
     "gender": "男",
@@ -49,7 +49,7 @@
   },
   {
     "id": "cn07_男_24_安徽",
-    "wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn07_男_24_安徽.wav",
+    "wav": "cn07_男_24_安徽.wav",
     "ref_text": "那个工作中间有休息吗",
     "text": "夜色温柔，灯光昏黄，她轻轻翻开那本旧日记，往事如潮水般涌来。",
     "gender": "男",
@@ -57,7 +57,7 @@
   },
   {
     "id": "cn08_男_20_山西",
-    "wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn08_男_20_山西.wav",
+    "wav": "cn08_男_20_山西.wav",
     "ref_text": "翁家宝自己不都说了嘛",
     "text": "夜色温柔，灯光昏黄，她轻轻翻开那本旧日记，往事如潮水般涌来。",
     "gender": "男",

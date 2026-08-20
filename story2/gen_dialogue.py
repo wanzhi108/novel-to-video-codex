@@ -9,20 +9,21 @@
   planB/subs/scene_{id}.ass             (逐句定时 + 说话人着色 + 拟声词)
 """
 import json, os, sys, time, subprocess, io, shutil, urllib.request
+from pathlib import Path
 
-PLANB = "D:/CosyVoice2/jb_work/story2"
-OUT_DIR = os.path.join(PLANB, "voice_lines")
-SUBS_DIR = os.path.join(PLANB, "subs")
-FFMPEG_DIR = "C:/Users/Lenovo/ffmpeg-shared/ffmpeg-8.1.1-full_build-shared/bin"
-FF = os.path.join(FFMPEG_DIR, "ffmpeg.EXE")
-FFP = os.path.join(FFMPEG_DIR, "ffprobe.EXE")
+PLANB = Path(__file__).resolve().parent
+OUT_DIR = PLANB / "voice_lines"
+SUBS_DIR = PLANB / "subs"
+FF = shutil.which("ffmpeg") or os.environ.get("FFMPEG_PATH") or "ffmpeg"
+FFP = shutil.which("ffprobe") or os.environ.get("FFPROBE_PATH") or "ffprobe"
 COSY_URL = "http://127.0.0.1:50000/generate"
 GAP = 0.45  # 句间留白(秒)
+REF_BASE = PLANB.parent / "cosyvoice2" / "cn_refs"
 
 os.makedirs(OUT_DIR, exist_ok=True)
 os.makedirs(SUBS_DIR, exist_ok=True)
 
-dialogue = json.load(open(os.path.join(PLANB, "dialogue.json"), encoding="utf-8"))
+dialogue = json.load(open(PLANB / "dialogue.json", encoding="utf-8"))
 voices = dialogue["voices"]
 scenes = dialogue["scenes"]
 
@@ -116,6 +117,8 @@ def main():
             text = ln["text"]
             v = voices.get(spk, voices["narration"])
             ref = v.get("ref_wav", "")
+            if ref and not os.path.isabs(ref):
+                ref = str(REF_BASE / os.path.basename(ref.replace("\\", "/")))
             mood = v.get("mood", "")
             log(f"  [{spk}] {text}")
             data = tts_generate(text, ref, mood)

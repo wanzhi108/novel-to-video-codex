@@ -10,13 +10,10 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 # ─── ComfyUI 连接 ──────────────────────────────────────────
 COMFYUI_URL = os.environ.get("COMFYUI_URL", "http://127.0.0.1:8188")
-# v9.6: 智能检测 ComfyUI models 目录，优先级: 环境变量 > URL 推断 > 默认值
+# v9.6: 智能检测 ComfyUI models 目录，优先级: 环境变量 > 仓库内默认值
 _default_models = os.environ.get("COMFYUI_MODELS_DIR", "")
 if not _default_models:
-    if "8188" in COMFYUI_URL:
-        _default_models = "D:/ComfyUI-WorkFisher-V2/ComfyUI/models"
-    else:
-        _default_models = str(Path(__file__).parent.parent / "ComfyUI" / "models")
+    _default_models = str(Path(__file__).parent.parent / "ComfyUI" / "models")
 COMFYUI_MODELS_DIR = Path(_default_models)
 
 # ─── DeepSeek LLM ──────────────────────────────────────────
@@ -65,7 +62,7 @@ KNOWN_MODEL_SIZES = {
 }
 
 # ─── 路径 ────────────────────────────────────────────────────
-WORKFLOW_DIR = Path(__file__).parent.parent / "comfyui_workflows"
+WORKFLOW_DIR = Path(__file__).parent.parent / "comfyui"
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 STATIC_DIR = Path(__file__).parent.parent / "static"
 

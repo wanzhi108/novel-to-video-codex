@@ -10,28 +10,25 @@
 """
 
 import json, os, sys, time, subprocess, shutil, tempfile, re, glob
+from pathlib import Path
 
-ROOT = "D:/CosyVoice2/jb_work"
-PLANB = os.path.join(ROOT, "story2")
-OUT_VID = os.path.join(PLANB, "videos")
-FINAL_DIR = "D:/CosyVoice2/jb_work/story2/output"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PLANB = Path(__file__).resolve().parent
+OUT_VID = PLANB / "videos"
+FINAL_DIR = PLANB / "output"
 
-FFMPEG_DIR = "C:/Users/Lenovo/ffmpeg-shared/ffmpeg-8.1.1-full_build-shared/bin"
-FF = os.path.join(FFMPEG_DIR, "ffmpeg.EXE")
-if not os.path.exists(FF):
-    FF = os.path.join(FFMPEG_DIR, "ffmpeg.exe")
-if not os.path.exists(FF):
-    FF = shutil.which("ffmpeg") or "ffmpeg"
+FF = shutil.which("ffmpeg") or os.environ.get("FFMPEG_PATH") or "ffmpeg"
+FFP = shutil.which("ffprobe") or os.environ.get("FFPROBE_PATH") or "ffprobe"
 
-FFP = os.path.join(FFMPEG_DIR, "ffprobe.EXE")
-if not os.path.exists(FFP):
-    FFP = os.path.join(FFMPEG_DIR, "ffprobe.exe")
-if not os.path.exists(FFP):
-    FFP = shutil.which("ffprobe") or "ffprobe"
-
-# MuseTalk v15 口型同步
-MUSE_DIR = "D:/ai-tools/MuseTalk"
-MUSE_PYTHON = os.path.join(MUSE_DIR, "venv/Scripts/python.exe")
+# MuseTalk v15 口型同步（MUSETALK_DIR > 仓库 tools/ > 用户 ai-tools/）
+MUSE_DIR = os.environ.get("MUSETALK_DIR", "")
+if not MUSE_DIR:
+    for cand in (PROJECT_ROOT / "tools" / "MuseTalk",
+                 Path.home() / "ai-tools" / "MuseTalk"):
+        if cand.exists():
+            MUSE_DIR = str(cand)
+            break
+MUSE_PYTHON = os.path.join(MUSE_DIR, "venv/Scripts/python.exe") if MUSE_DIR else ""
 MUSE_TIMEOUT = 2400  # 40min / scene (dwpose CPU 慢, 长景需 ~40min, 超时则回退常规混音)
 
 FONT = "C:/Windows/Fonts/msyh.ttc"
@@ -52,9 +49,12 @@ except Exception:
 
 # 多角色配音覆盖: gen_dialogue.py 生成的每镜音频 (老张/小李双声)
 try:
-    SCENE_AUDIO_OVERRIDE = json.load(open(os.path.join(PLANB, "scene_audio_map.json"), encoding="utf-8"))
+    SCENE_AUDIO_OVERRIDE = json.load(open(PLANB / "scene_audio_map.json", encoding="utf-8"))
 except Exception:
     SCENE_AUDIO_OVERRIDE = {}
+for _k, _v in list(SCENE_AUDIO_OVERRIDE.items()):
+    if _v and not os.path.isabs(_v):
+        SCENE_AUDIO_OVERRIDE[_k] = str(PLANB / _v.replace("\\", "/"))
 
 
 def log(*a):
@@ -241,7 +241,9 @@ def apply_lip_sync(video_path, audio_path, result_dir, result_name="scene_lipsyn
 
     # MuseTalk 内部 os.system 调用裸 ffmpeg，必须注入 PATH
     env = os.environ.copy()
-    env["PATH"] = FFMPEG_DIR + os.pathsep + env.get("PATH", "")
+    _ff_bin = os.path.dirname(FF) if FF and os.path.dirname(FF) else ""
+    if _ff_bin:
+        env["PATH"] = _ff_bin + os.pathsep + env.get("PATH", "")
 
     cmd = [MUSE_PYTHON, "-m", "scripts.inference",
            "--inference_config", config_path,

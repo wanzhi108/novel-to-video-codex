@@ -13,13 +13,12 @@ Video Engine — 统一视频生成调度 (v12.0)
   7. ken_burns  — FFmpeg zoompan 推拉摇移（零成本兜底）
   8. parallax   — 三层视差动画（需 SAM 预处理）
 """
-import asyncio, subprocess, sys, os, json, copy, random
+import asyncio, subprocess, sys, os, json, copy, random, shutil
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent
-FFMPEG = "ffmpeg"
-for p in ["D:/ComfyUI-WorkFisher-V2/ComfyUI/ffmpeg/ffmpeg.exe"]:
-    if Path(p).exists(): FFMPEG = p; break
+FFMPEG = os.environ.get("FFMPEG_PATH") or shutil.which("ffmpeg") or "ffmpeg"
+FFPROBE = os.environ.get("FFPROBE_PATH") or shutil.which("ffprobe") or "ffprobe"
 
 
 # ─── 模式1: 云端文生视频 ──────────────────────────────────
@@ -478,7 +477,7 @@ def _is_static_video(path: str) -> bool:
     """检测视频是否静态（帧数 < 24）"""
     try:
         pr = subprocess.run(
-            ['ffprobe', '-v', 'quiet', '-count_frames', '-select_streams', 'v:0',
+            [FFPROBE, '-v', 'quiet', '-count_frames', '-select_streams', 'v:0',
              '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', path],
             capture_output=True, text=True, timeout=15
         )

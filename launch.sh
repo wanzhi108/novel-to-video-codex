@@ -50,4 +50,4 @@ echo "  浏览器访问: http://localhost:8190"
 echo "  按 Ctrl+C 停止服务器"
 echo ""
 
-python3 main.py
+python3 scripts/main.py

@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import sqlite3
 import time
 from pathlib import Path
@@ -18,8 +19,12 @@ from app.models import JobState, Scene, Character
 
 logger = logging.getLogger("novel2vid.storage")
 
-# 数据库路径
-_DB_DIR = Path(os.environ.get("OUTPUT_DIR", Path(__file__).parent / "output"))
+# 数据库路径：源码模式放仓库根 output，打包模式放 exe 同级 output
+if getattr(sys, "frozen", False):
+    _DEFAULT_OUT = Path(sys.executable).parent / "output"
+else:
+    _DEFAULT_OUT = Path(__file__).resolve().parent.parent / "output"
+_DB_DIR = Path(os.environ.get("OUTPUT_DIR", _DEFAULT_OUT))
 _DB_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = _DB_DIR / "luminaforge.db"
 

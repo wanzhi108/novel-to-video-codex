@@ -1,4 +1,4 @@
-﻿# LuminaForge install script
+# LuminaForge install script
 # Usage: powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 $ErrorActionPreference = "Stop"
@@ -28,7 +28,12 @@ Write-Host "       $InstallDir" -ForegroundColor Green
 
 Write-Host "[3/5] Copying files..." -ForegroundColor Yellow
 Copy-Item -Path $DistDir -Destination "$InstallDir\LuminaForge.exe" -Force
-Copy-Item -Path "$SourceDir\resources\luminaforge.ico" -Destination "$InstallDir\LuminaForge.ico" -Force
+$LuminaForgeIcon = "$InstallDir\LuminaForge.ico"
+if (Test-Path "$SourceDir\resources\luminaforge.ico") {
+    Copy-Item -Path "$SourceDir\resources\luminaforge.ico" -Destination $LuminaForgeIcon -Force
+} else {
+    Remove-Item $LuminaForgeIcon -Force -ErrorAction SilentlyContinue
+}
 New-Item -ItemType Directory -Force -Path "$InstallDir\output" | Out-Null
 New-Item -ItemType Directory -Force -Path "$InstallDir\jobs" | Out-Null
 Write-Host "       Done" -ForegroundColor Green
@@ -41,7 +46,7 @@ Remove-Item "$DesktopDir\Novel-to-Video.bat" -Force -ErrorAction SilentlyContinu
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut("$DesktopDir\墨影流光.lnk")
 $Shortcut.TargetPath = "$InstallDir\LuminaForge.exe"
-$Shortcut.IconLocation = "$InstallDir\LuminaForge.ico,0"
+$Shortcut.IconLocation = if (Test-Path "$InstallDir\LuminaForge.ico") { "$InstallDir\LuminaForge.ico,0" } else { "$InstallDir\LuminaForge.exe,0" }
 $Shortcut.Description = "LuminaForge - 字里乾坤 · 光影成诗"
 $Shortcut.WorkingDirectory = "$InstallDir"
 $Shortcut.Save()
@@ -52,7 +57,7 @@ New-Item -ItemType Directory -Force -Path $StartMenuDir | Out-Null
 
 $StartShortcut = $WshShell.CreateShortcut("$StartMenuDir\墨影流光.lnk")
 $StartShortcut.TargetPath = "$InstallDir\LuminaForge.exe"
-$StartShortcut.IconLocation = "$InstallDir\LuminaForge.ico,0"
+$StartShortcut.IconLocation = if (Test-Path "$InstallDir\LuminaForge.ico") { "$InstallDir\LuminaForge.ico,0" } else { "$InstallDir\LuminaForge.exe,0" }
 $StartShortcut.Description = "LuminaForge"
 $StartShortcut.WorkingDirectory = "$InstallDir"
 $StartShortcut.Save()

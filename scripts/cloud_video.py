@@ -16,8 +16,9 @@ try:
 except ImportError:
     pass
 
-BUDDY_CLOUD = Path(os.environ.get("LOCALAPPDATA",
-    str(Path.home() / "AppData/Local"))) / "Programs/WorkBuddy/resources/app.asar.unpacked/resources/builtin-skills/buddy-multimodal-generation/scripts/buddy-cloud.py"
+_BUDDY_CLOUD_DEFAULT = (Path(os.environ.get("LOCALAPPDATA",
+    str(Path.home() / "AppData/Local"))) / "Programs/WorkBuddy/resources/app.asar.unpacked/resources/builtin-skills/buddy-multimodal-generation/scripts/buddy-cloud.py")
+BUDDY_CLOUD = Path(os.environ.get("BUDDY_CLOUD_PATH", "")) or _BUDDY_CLOUD_DEFAULT
 
 
 def _call_buddy(prompt: str, token: str, timeout: int = 600) -> tuple[dict, str]:

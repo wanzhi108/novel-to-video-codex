@@ -57,19 +57,20 @@ class TTSRequest(BaseModel):
 # 若 refs/ 目录存在多段 wav，会优先使用
 SPEAKER_DEFS = [
     # (speaker_id, gender, ref_filename, prompt_text)
-    ("default",              "中性", "asset/zero_shot_prompt.wav",
+    # ref_filename 位于 cn_refs/（可被 COSYVOICE_REFS_DIR 覆盖）
+    ("default",              "中性", "cn03_女_36_四川.wav",
      "希望你以后能够做的比我还好呦。"),
-    ("chinese_male_deep",    "男",  "asset/zero_shot_prompt.wav",
+    ("chinese_male_deep",    "男",  "cn07_男_24_安徽.wav",
      "今天我们来讨论一下这个项目的进展。"),
-    ("chinese_male_young",   "男",  "asset/zero_shot_prompt.wav",
+    ("chinese_male_young",   "男",  "cn07_男_24_安徽.wav",
      "嘿，兄弟你听我说，事情是这样的。"),
-    ("chinese_male_mature",  "男",  "asset/zero_shot_prompt.wav",
+    ("chinese_male_mature",  "男",  "cn07_男_24_安徽.wav",
      "作为这个领域的专业人士，我认为应该这样处理。"),
-    ("chinese_female_soft",  "女",  "asset/zero_shot_prompt.wav",
+    ("chinese_female_soft",  "女",  "cn03_女_36_四川.wav",
      "希望你以后能够做的比我还好哦。"),
-    ("chinese_female_bright","女",  "asset/zero_shot_prompt.wav",
+    ("chinese_female_bright","女",  "cn03_女_36_四川.wav",
      "哎呀你看你看，这东西真的好有意思呀。"),
-    ("chinese_female_calm",  "女",  "asset/zero_shot_prompt.wav",
+    ("chinese_female_calm",  "女",  "cn03_女_36_四川.wav",
      "各位听众朋友们，让我们一起走进今天的故事。"),
 ]
 
@@ -84,21 +85,24 @@ DEFAULT_SAMPLE_RATE = 24000
 CANONICAL_PROMPT = "希望你以后能够做的比我还好呦。"
 REGISTERED_SPKE_ID = "cosy_default"
 
-REFS_DIR = ROOT / "refs"
+REFS_DIR = Path(os.environ.get("COSYVOICE_REFS_DIR", ROOT / "cn_refs"))
+if not REFS_DIR.is_absolute():
+    REFS_DIR = ROOT / REFS_DIR
+
+# 自动按文件名归类到对应 speaker（cn_refs/*.wav 或自定义参考目录）
 if REFS_DIR.exists():
     for f in REFS_DIR.glob("*.wav"):
-        # 自动按文件名归类到对应 speaker
-        name = f.stem  # e.g. "male_deep"
+        name = f.stem  # e.g. "cn07_男_24_安徽"
         for spk in SPEAKER_MAP:
-            if name in spk:
-                SPEAKER_MAP[spk]["ref"] = str(f.relative_to(ROOT))
+            if name in spk or f.name == SPEAKER_MAP[spk]["ref"]:
+                SPEAKER_MAP[spk]["ref"] = f.name
                 break
 
-# 兜底：default 一定可用
-DEFAULT_REF = ROOT / "asset" / "zero_shot_prompt.wav"
+# 兜底：default 一定可用；全部缺失时由调用方给出明确错误
+DEFAULT_REF = REFS_DIR / "cn03_女_36_四川.wav"
 if not DEFAULT_REF.exists():
-    # 退化方案：用 cosyvoice 包内自带的示例
-    DEFAULT_REF = ROOT / "asset" / "cross_lingual_prompt.wav"
+    wavs = sorted(REFS_DIR.glob("*.wav")) if REFS_DIR.exists() else []
+    DEFAULT_REF = wavs[0] if wavs else None
 
 # ─── 情绪 → instruct_text 映射 ─────────────────────────────────
 MOOD_INSTRUCT = {
@@ -126,9 +130,11 @@ MOOD_INSTRUCT = {
 def resolve_speaker(voice: str) -> tuple[str, str]:
     """根据 speaker_id 返回 (ref_path, prompt_text)"""
     info = SPEAKER_MAP.get(voice, SPEAKER_MAP["default"])
-    ref_path = ROOT / info["ref"]
+    ref_path = REFS_DIR / info["ref"]
     if not ref_path.exists():
         ref_path = DEFAULT_REF
+    if ref_path is None:
+        raise RuntimeError("未找到 CosyVoice 参考音频，请设置 COSYVOICE_REFS_DIR 或放入 cn_refs/")
     return str(ref_path), info["prompt"]
 
 
@@ -140,10 +146,16 @@ def get_cosyvoice():
     global _cosyvoice
     if _cosyvoice is None:
         from cosyvoice.cli.cosyvoice import CosyVoice2
-        model_dir = os.environ.get(
-            "COSYVOICE_MODEL_DIR",
-            "D:/CosyVoice2/models/iic/CosyVoice2-0___5B"
-        )
+        model_dir = os.environ.get("COSYVOICE_MODEL_DIR", "")
+        if not model_dir:
+            for _cand in (ROOT / "pretrained_models" / "CosyVoice2-0.5B",
+                          ROOT / "models" / "iic" / "CosyVoice2-0___5B",
+                          Path.home() / "CosyVoice2" / "pretrained_models" / "CosyVoice2-0.5B"):
+                if _cand.exists():
+                    model_dir = str(_cand)
+                    break
+        if not model_dir:
+            raise RuntimeError("COSYVOICE_MODEL_DIR 未设置，且未找到本地 CosyVoice2 模型目录")
         print(f"[CosyVoice] 加载模型: {model_dir}", flush=True)
         # fp16=True 仅在 CUDA 可用时启用（CPU 推理 fp16 会报错）
         use_fp16 = torch.cuda.is_available()
@@ -159,22 +171,22 @@ def get_cosyvoice():
         # 注册零样本说话人：用官方参考音频 + 正确转写，注册一次，生成时复用
         # 比每次传 prompt_wav 更稳定、音色更保真
         try:
-            ref_for_reg = ROOT / "asset" / "zero_shot_prompt.wav"
-            if not ref_for_reg.exists():
-                ref_for_reg = DEFAULT_REF
-            _cosyvoice.add_zero_shot_spk(
-                CANONICAL_PROMPT, str(ref_for_reg), REGISTERED_SPKE_ID
-            )
+            ref_for_reg = DEFAULT_REF
+            if ref_for_reg is not None:
+                _cosyvoice.add_zero_shot_spk(
+                    CANONICAL_PROMPT, str(ref_for_reg), REGISTERED_SPKE_ID
+                )
             print(f"[CosyVoice] 已注册零样本说话人: {REGISTERED_SPKE_ID}", flush=True)
             # 注册各预设说话人，供 voice 参数选择（多角色区分 + 情绪控制）
             for sid, info in SPEAKER_MAP.items():
                 if sid == "default":
                     continue
                 try:
-                    refp = ROOT / info["ref"]
+                    refp = REFS_DIR / info["ref"]
                     if not refp.exists():
                         refp = DEFAULT_REF
-                    _cosyvoice.add_zero_shot_spk(info["prompt"], str(refp), "preset_" + sid)
+                    if refp is not None:
+                        _cosyvoice.add_zero_shot_spk(info["prompt"], str(refp), "preset_" + sid)
                 except Exception as ex:
                     print(f"[CosyVoice] 预设说话人注册失败 {sid}: {ex}", flush=True)
         except Exception as e:

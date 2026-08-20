@@ -1,25 +1,29 @@
-# Novel2Vid V1.0 Docker
-FROM python:3.11-slim
+# ---- 前端构建 ----
+FROM node:20-alpine AS web-build
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
 
+# ---- 运行环境 ----
+FROM python:3.11-slim
 WORKDIR /app
 
-# 系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Python 依赖
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 应用代码
-COPY main.py .
+COPY scripts/ scripts/
 COPY app/ app/
-COPY comfyui_workflows/ comfyui_workflows/
+COPY comfyui/ comfyui/
 COPY static/ static/
+COPY --from=web-build /web/dist web/dist/
 
-# 输出和临时目录
 RUN mkdir -p output
 
 EXPOSE 8190
@@ -27,4 +31,4 @@ EXPOSE 8190
 ENV COMFYUI_URL=http://comfyui:8188
 ENV COMFYUI_MODELS_DIR=/models
 
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8190"]
+CMD ["python", "scripts/main.py"]

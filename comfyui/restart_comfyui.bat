@@ -6,8 +6,16 @@ echo   ComfyUI Strong Restart v4
 echo ============================================
 
 echo.
-echo [1/3] Killing old ComfyUI process (by exe path)...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.MainModule.FileName -eq 'D:\ComfyUI-WorkFisher-V2\python\python.exe' } | Stop-Process -Force"
+echo [1/3] Killing old ComfyUI process...
+if not defined COMFYUI_PATH set "COMFYUI_PATH=%~dp0..\ComfyUI"
+if not defined COMFYUI_PYTHON (
+  if exist "%COMFYUI_PATH%\..\python\python.exe" (
+    set "COMFYUI_PYTHON=%COMFYUI_PATH%\..\python\python.exe"
+  ) else (
+    set "COMFYUI_PYTHON=python"
+  )
+)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$py = $env:COMFYUI_PYTHON; Get-CimInstance Win32_Process -Filter \"Name = 'python.exe'\" | Where-Object { ($py -and $_.ExecutablePath -eq $py) -or ($_.CommandLine -match 'ComfyUI[\\/]main\.py') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 echo   Done.
 
 echo.
@@ -27,13 +35,14 @@ if %PORT_FREE%==1 (echo   Port 8188 is free.) else (echo   WARNING: port still o
 
 echo.
 echo [3/3] Starting new ComfyUI...
-if not exist "D:\ComfyUI-WorkFisher-V2\python\python.exe" (
-  echo   ERROR: python.exe not found.
+if not exist "%COMFYUI_PATH%\main.py" (
+  echo   ERROR: ComfyUI main.py not found at "%COMFYUI_PATH%".
+  echo   Set COMFYUI_PATH to the ComfyUI install directory.
   pause
   exit /b 1
 )
-cd /d "D:\ComfyUI-WorkFisher-V2\ComfyUI"
-start "ComfyUI" "D:\ComfyUI-WorkFisher-V2\python\python.exe" "D:\ComfyUI-WorkFisher-V2\ComfyUI\main.py" --lowvram --async-offload 2 --port 8188 --listen 127.0.0.1
+cd /d "%COMFYUI_PATH%"
+start "ComfyUI" "%COMFYUI_PYTHON%" "%COMFYUI_PATH%\main.py" --lowvram --async-offload 2 --port 8188 --listen 127.0.0.1
 echo   Launched.
 
 echo.

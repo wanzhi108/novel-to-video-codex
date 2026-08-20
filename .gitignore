@@ -76,3 +76,16 @@ _corrupted_backup/
 _subtest/
 test_output/
 test_ltx23_output/
+
+# ── 二进制素材（按需生成，不入库）──
+bgm/*.mp3
+sfx/*.mp3
+sfx/action/*.mp3
+sfx/ambient/*.mp3
+sfx/transition/*.mp3
+sfx/_generated/
+resources/fonts/
+resources/*.png
+resources/*.ico
+story2/refs/
+cosyvoice2/cn_refs/*.wav

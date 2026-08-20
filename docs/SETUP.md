@@ -19,11 +19,13 @@ venv/Scripts/activate    # Windows
 - aiofiles==24.1.0
 - websockets>=12.0
 - edge-tts>=6.1.0
+- python-dotenv==1.0.1
+- pydub==0.25.1
 
 ### 1.2 CosyVoice2 环境（独立 venv）
 
 ```bash
-cd D:/CosyVoice2
+cd <CosyVoice2 安装目录>
 python -m venv cosy_env
 cosy_env/Scripts/activate
 pip install torch==2.7.0+cu128  # CUDA 12.8
@@ -36,15 +38,15 @@ pip install numpy  # 必须 2.x，勿降到 1.26.4
 
 ### 1.3 story2 管线脚本
 
-story2 脚本不需要额外 venv，使用系统 Python 或 WorkBuddy managed Python 即可。
-依赖：`requests`（ComfyUI API 调用）、`Pillow`（图片处理）。
+story2 脚本不需要额外 venv，使用系统 Python 即可。
+依赖：`Pillow`（clean_watermark.py 图片处理），其余使用标准库。
 
 ## 2. ComfyUI 安装
 
 ### 2.1 安装 ComfyUI
 
 ```bash
-# 推荐使用 ComfyUI-WorkFisher-V2 或官方 ComfyUI
+# 推荐使用官方 ComfyUI
 git clone https://github.com/comfyanonymous/ComfyUI.git
 ```
 
@@ -66,8 +68,8 @@ story2 管线需要以下自定义节点：
 
 ```bat
 :: comfyui/restart_comfyui.bat 的核心命令：
-D:\ComfyUI-WorkFisher-V2\python\python.exe ^
-  D:\ComfyUI-WorkFisher-V2\ComfyUI\main.py ^
+python <ComfyUI 安装目录>\main.py ^
+  --lowvram --async-offload 2 ^
   --lowvram --async-offload 2 ^
   --port 8188 --listen 127.0.0.1
 ```
@@ -109,7 +111,7 @@ cp .env.example .env
 # 编辑 .env
 DEEPSEEK_API_KEY=sk-your-key-here
 COMFYUI_URL=http://127.0.0.1:8188
-COMFYUI_MODELS_DIR=D:/ComfyUI-WorkFisher-V2/ComfyUI/models
+COMFYUI_MODELS_DIR=<ComfyUI>/models  # 留空则使用仓库内 ComfyUI/models
 ```
 
 ## 7. 验证安装

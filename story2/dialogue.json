@@ -1,9 +1,9 @@
 {
   "title": "被辞退那天，我写的代码卖了八千万",
   "voices": {
-    "wang":       {"ref_wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn07_男_24_安徽.wav", "mood": ""},
-    "narration": {"ref_wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn03_女_36_四川.wav", "mood": ""},
-    "yang":       {"ref_wav": "D:/CosyVoice2/cn_corpus/cn_refs/cn06_男_20_上海.wav", "mood": ""}
+    "wang":       {"ref_wav": "cn07_男_24_安徽.wav", "mood": ""},
+    "narration": {"ref_wav": "cn03_女_36_四川.wav", "mood": ""},
+    "yang":       {"ref_wav": "cn06_男_20_上海.wav", "mood": ""}
   },
   "scenes": {
     "1": [

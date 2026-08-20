@@ -29,27 +29,29 @@ from dataclasses import dataclass, field
 #  常量 & 路径
 # ═══════════════════════════════════════════════════════════
 def _get_base_dir() -> Path:
-    """获取应用基础目录：开发时用项目根，打包后用 exe 所在目录（可写）"""
+    """获取应用基础目录：开发时用仓库根，打包后用 exe 所在目录（可写）"""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
-    return Path(__file__).parent.resolve()
+    return Path(__file__).resolve().parent.parent
 
 def _get_resource_dir() -> Path:
-    """获取资源目录（只读）：打包后在 _MEIPASS，开发时在项目根"""
+    """获取资源目录（只读）：打包后在 _MEIPASS，开发时在仓库根"""
     if getattr(sys, "frozen", False):
         return Path(sys._MEIPASS)
-    return Path(__file__).parent.resolve()
+    return Path(__file__).resolve().parent.parent
 
 BASE_DIR = _get_base_dir()
 RESOURCE_DIR = _get_resource_dir()
-MAIN_SCRIPT = RESOURCE_DIR / "main.py"
+MAIN_SCRIPT = RESOURCE_DIR / "scripts" / "main.py"
 CONFIG_FILE = BASE_DIR / "launcher_config.json"
 
 PROJECT_DIR = BASE_DIR  # 保持旧引用兼容
 
-# 确保 RESOURCE_DIR 在 sys.path 中，打包后 import main 才能找到
+# 确保 RESOURCE_DIR / scripts 在 sys.path 中，打包后 import scripts.main / storage / video_engine 才能找到
 if str(RESOURCE_DIR) not in sys.path:
     sys.path.insert(0, str(RESOURCE_DIR))
+if str(RESOURCE_DIR / "scripts") not in sys.path:
+    sys.path.insert(0, str(RESOURCE_DIR / "scripts"))
 
 # 窗口化 .exe 中 sys.stdout/stderr 为 None，uvicorn 日志会崩溃；重定向到日志文件
 if getattr(sys, "frozen", False) and (sys.stdout is None or sys.stderr is None):
@@ -81,9 +83,10 @@ def _find_python_exe() -> str:
     candidates = [
         str(BASE_DIR / "venv" / "Scripts" / "python.exe"),
         str(BASE_DIR / ".venv" / "Scripts" / "python.exe"),
-        r"C:\Users\Lenovo\.workbuddy\binaries\python\versions\3.13.12\python.exe",
-        r"D:\python.exe",
     ]
+    env_py = os.environ.get("PYTHON_EXE", "")
+    if env_py:
+        candidates.insert(0, env_py)
     if not getattr(sys, "frozen", False):
         candidates.insert(0, sys.executable)
 
@@ -387,10 +390,10 @@ class ProcessManager:
                         try:
                             import asyncio
                             import uvicorn
-                            import main
+                            from scripts import main as main_module
                             asyncio.set_event_loop(asyncio.new_event_loop())
                             config = uvicorn.Config(
-                                main.app, host="0.0.0.0", port=port,
+                                main_module.app, host="0.0.0.0", port=port,
                                 log_level="info", loop="asyncio"
                             )
                             server = uvicorn.Server(config)
@@ -497,10 +500,11 @@ class ProcessManager:
             self._log("ComfyUI 已在运行", "warn")
             return
 
-        comfyui_paths = [
-            Path("D:/ComfyUI-WorkFisher-V2/ComfyUI"),
-            Path(os.environ.get("COMFYUI_PATH", "")),
-        ]
+        comfyui_paths = []
+        env_comfyui = os.environ.get("COMFYUI_PATH", "")
+        if env_comfyui:
+            comfyui_paths.append(Path(env_comfyui))
+        comfyui_paths.append(BASE_DIR / "ComfyUI")
         comfyui_dir = None
         for p in comfyui_paths:
             if (p / "main.py").exists():
@@ -574,7 +578,7 @@ class ProcessManager:
     # ─── CosyVoice2 管理（v12.1 新增：随主服务一同启动） ─────
     def start_cosyvoice(self):
         """启动 CosyVoice2 本地 TTS 服务（端口 50000）。
-        路径可经环境变量 COSYVOICE_PATH 覆盖，默认 D:\\CosyVoice2。
+        路径可经环境变量 COSYVOICE_PATH 覆盖，默认在仓库外/常见安装位置查找。
         """
         if getattr(self, "is_cosyvoice_running", False):
             self._log("CosyVoice2 已在运行", "warn")
@@ -582,14 +586,16 @@ class ProcessManager:
         if not hasattr(self, "is_cosyvoice_running"):
             self.is_cosyvoice_running = False
 
-        cosy_root = Path(os.environ.get("COSYVOICE_PATH", r"D:\CosyVoice2"))
+        cosy_root = Path(os.environ.get("COSYVOICE_PATH", ""))
+        if not cosy_root:
+            cosy_root = BASE_DIR / "CosyVoice2"
         cosy_py = cosy_root / "cosy_env" / "Scripts" / "python.exe"
         cosy_server = cosy_root / "server.py"
 
-        # 若默认路径不存在，回退尝试若干常见安装位置
+        # 若默认路径不存在，回退尝试仓库内/常见安装位置
         if not cosy_py.exists() or not cosy_server.exists():
-            for cand in [Path(r"D:\CosyVoice2"), Path(r"C:\CosyVoice2"),
-                         BASE_DIR / "CosyVoice2"]:
+            for cand in [BASE_DIR / "CosyVoice2",
+                         Path(os.environ.get("COSYVOICE_PATH", ""))]:
                 if (cand / "cosy_env" / "Scripts" / "python.exe").exists() \
                    and (cand / "server.py").exists():
                     cosy_root = cand

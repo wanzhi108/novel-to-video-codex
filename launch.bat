@@ -34,22 +34,12 @@ REM 2. 检查依赖
 REM ============================================================
 echo.
 echo [2/6] 检查依赖...
-if "%PYTHON_CMD%"=="venv\Scripts\python.exe" (
-    %PYTHON_CMD% -c "import fastapi" >nul 2>&1
-    if errorlevel 1 (
-        echo   [!] venv 依赖未安装，正在安装...
-        %PYTHON_CMD% -m pip install -r requirements.txt
-    ) else (
-        echo   [✓] 依赖已安装
-    )
+%PYTHON_CMD% -c "import fastapi, uvicorn, httpx, aiofiles, websockets, edge_tts, pydub, dotenv" >nul 2>&1
+if errorlevel 1 (
+    echo   [!] 依赖未安装，正在安装...
+    %PYTHON_CMD% -m pip install -r requirements.txt
 ) else (
-    pip show fastapi >nul 2>&1
-    if errorlevel 1 (
-        echo   [!] 依赖未安装，正在安装...
-        pip install -r requirements.txt
-    ) else (
-        echo   [✓] 依赖已安装
-    )
+    echo   [✓] 依赖已安装
 )
 
 REM ============================================================
@@ -114,5 +104,5 @@ echo ║  按 Ctrl+C 停止                                          ║
 echo ╚══════════════════════════════════════════════════════════╝
 echo.
 
-%PYTHON_CMD% main.py
+%PYTHON_CMD% scripts\main.py
 pause

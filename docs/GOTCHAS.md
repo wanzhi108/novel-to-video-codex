@@ -7,7 +7,7 @@
 **根因**：22B 模型权重 ~23GB，8.5GB 显存放不下。
 **解决**：`--lowvram --async-offload 2` 启动，靠 CPU/RAM 卸载。
 ```bat
-D:\ComfyUI-WorkFisher-V2\python\python.exe main.py --lowvram --async-offload 2 --port 8188
+python <ComfyUI 安装目录>\main.py --lowvram --async-offload 2 --port 8188
 ```
 
 ### 2. 静默失败 outputs={}
@@ -83,9 +83,9 @@ pip install transformers==4.51.3 tokenizers==0.21.1 modelscope==1.20.0
 **解决**：重拉 driver，skip 逻辑会自动跳过已完成段。**必须用正斜杠路径**：
 ```bash
 # 正确（Git Bash 不转义）：
-/c/Users/Lenovo/.workbuddy/binaries/python/versions/3.13.12/python.exe D:/CosyVoice2/jb_work/story2/gen_ltx.py all
+python /<repo>/story2/gen_ltx.py all
 # 错误（反斜杠被 Git Bash 转义吃掉 → command not found）：
-C:\Users\Lenovo\.workbuddy\...\python.exe ...
+python <repo>\story2\gen_ltx.py all
 ```
 
 ### 15. 沙箱安全删除拦截
