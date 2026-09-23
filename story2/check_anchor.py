@@ -1,0 +1,46 @@
+import sys
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+
+def face_emb(path):
+    import insightface
+    fa = insightface.app.FaceAnalysis(
+        name="antelopev2", providers=["CPUExecutionProvider"])
+    fa.prepare(ctx_id=0, det_size=(640, 640))
+    img = cv2.imread(str(path))
+    faces = fa.get(img)
+    if not faces:
+        return None, fa, img
+    return faces[0].normed_embedding, fa, img
+
+
+def main():
+    src = Path(sys.argv[1])
+    frames = [Path(p) for p in sys.argv[2:]]
+    e0, fa, img0 = face_emb(src)
+    prev = None
+    for i, fp in enumerate(frames):
+        e, _, img = face_emb(fp)
+        if e0 is None:
+            sim_src = float("nan")
+        elif e is None:
+            sim_src = float("nan")
+        else:
+            sim_src = float(np.dot(e0, e))
+        if prev is None:
+            sim_prev = float("nan")
+        else:
+            sim_prev = float(np.dot(prev, e))
+        g0 = cv2.resize(img0, (480, 864))
+        g1 = cv2.resize(img, (480, 864))
+        mae = float(np.abs(g0.astype(np.float32) - g1.astype(np.float32)).mean())
+        print("%s: face_vs_src=%.3f face_vs_prev=%.3f pixel_mae_vs_src=%.2f" % (
+            fp.name, sim_src, sim_prev, mae))
+        prev = e
+
+
+if __name__ == "__main__":
+    main()

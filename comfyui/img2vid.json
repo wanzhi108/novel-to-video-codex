@@ -146,9 +146,13 @@
     }
   },
   "4974": {
-    "class_type": "LatentUpscaleModelLoader",
+    "class_type": "LowVRAMLatentUpscaleModelLoader",
     "inputs": {
-      "model_name": "ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
+      "model_name": "ltx-2.3-spatial-upscaler-x2-1.0.safetensors",
+      "dependencies": [
+        "4010",
+        0
+      ]
     }
   },
   "4971": {
@@ -323,13 +327,17 @@
     }
   },
   "4010": {
-    "class_type": "LTXVAudioVAELoader",
+    "class_type": "LowVRAMAudioVAELoader",
     "inputs": {
-      "ckpt_name": "{{CHECKPOINT}}"
+      "ckpt_name": "{{CHECKPOINT}}",
+      "dependencies": [
+        "3940",
+        0
+      ]
     }
   },
   "3940": {
-    "class_type": "CheckpointLoaderSimple",
+    "class_type": "LowVRAMCheckpointLoader",
     "inputs": {
       "ckpt_name": "{{CHECKPOINT}}"
     }
@@ -350,7 +358,7 @@
     "inputs": {
       "text_encoder": "{{TEXT_ENCODER}}",
       "ckpt_name": "{{CHECKPOINT}}",
-      "device": "default"
+      "device": "cpu"
     }
   },
   "4967": {

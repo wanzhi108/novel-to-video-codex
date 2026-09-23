@@ -1,0 +1,545 @@
+{
+  "4528": {
+    "class_type": "LTXVConcatAVLatent",
+    "inputs": {
+      "video_latent": [
+        "3159",
+        0
+      ],
+      "audio_latent": [
+        "3980",
+        0
+      ]
+    }
+  },
+  "3159": {
+    "class_type": "LTXVImgToVideoConditionOnly",
+    "inputs": {
+      "strength": 0.7,
+      "vae": [
+        "3940",
+        2
+      ],
+      "image": [
+        "3336",
+        0
+      ],
+      "latent": [
+        "3059",
+        0
+      ],
+      "bypass": [
+        "4987",
+        0
+      ]
+    }
+  },
+  "4976": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler_cfg_pp"
+    }
+  },
+  "4964": {
+    "class_type": "CFGGuider",
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "5008",
+        0
+      ],
+      "positive": [
+        "1241",
+        0
+      ],
+      "negative": [
+        "1241",
+        1
+      ]
+    }
+  },
+  "3336": {
+    "class_type": "LTXVPreprocess",
+    "inputs": {
+      "img_compression": 18,
+      "image": [
+        "5040",
+        0
+      ]
+    }
+  },
+  "4828": {
+    "class_type": "CFGGuider",
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "5008",
+        0
+      ],
+      "positive": [
+        "1241",
+        0
+      ],
+      "negative": [
+        "1241",
+        1
+      ]
+    }
+  },
+  "4831": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler_ancestral_cfg_pp"
+    }
+  },
+  "4829": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "4832",
+        0
+      ],
+      "guider": [
+        "4828",
+        0
+      ],
+      "sampler": [
+        "4831",
+        0
+      ],
+      "sigmas": [
+        "4984",
+        0
+      ],
+      "latent_image": [
+        "4528",
+        0
+      ]
+    }
+  },
+  "4985": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "0.85, 0.80, 0.70, 0.55, 0.35, 0.15, 0.0"
+    }
+  },
+  "4969": {
+    "class_type": "LTXVConcatAVLatent",
+    "inputs": {
+      "video_latent": [
+        "4970",
+        0
+      ],
+      "audio_latent": [
+        "4845",
+        1
+      ]
+    }
+  },
+  "4845": {
+    "class_type": "LTXVSeparateAVLatent",
+    "inputs": {
+      "av_latent": [
+        "4829",
+        0
+      ]
+    }
+  },
+  "4974": {
+    "class_type": "LowVRAMLatentUpscaleModelLoader",
+    "inputs": {
+      "model_name": "ltx-2.3-spatial-upscaler-x2-1.0.safetensors",
+      "dependencies": [
+        "4010",
+        0
+      ]
+    }
+  },
+  "4971": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "4967",
+        0
+      ],
+      "guider": [
+        "4964",
+        0
+      ],
+      "sampler": [
+        "4976",
+        0
+      ],
+      "sigmas": [
+        "4985",
+        0
+      ],
+      "latent_image": [
+        "4969",
+        0
+      ]
+    }
+  },
+  "4973": {
+    "class_type": "LTXVSeparateAVLatent",
+    "inputs": {
+      "av_latent": [
+        "4971",
+        0
+      ]
+    }
+  },
+  "4851": {
+    "class_type": "VAEDecodeTiled",
+    "inputs": {
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 512,
+      "temporal_overlap": 4,
+      "samples": [
+        "4973",
+        0
+      ],
+      "vae": [
+        "3940",
+        2
+      ]
+    }
+  },
+  "4848": {
+    "class_type": "LTXVAudioVAEDecode",
+    "inputs": {
+      "samples": [
+        "4973",
+        1
+      ],
+      "audio_vae": [
+        "4010",
+        0
+      ]
+    }
+  },
+  "2483": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "4982",
+        0
+      ],
+      "text": [
+        "5013",
+        0
+      ]
+    }
+  },
+  "1241": {
+    "class_type": "LTXVConditioning",
+    "inputs": {
+      "positive": [
+        "2483",
+        0
+      ],
+      "negative": [
+        "2612",
+        0
+      ],
+      "frame_rate": [
+        "4989",
+        0
+      ]
+    }
+  },
+  "2612": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{NEGATIVE_PROMPT}}",
+      "clip": [
+        "4982",
+        0
+      ]
+    }
+  },
+  "5008": {
+    "class_type": "LTXVChunkFeedForward",
+    "inputs": {
+      "chunks": 4,
+      "dim_threshold": 4096,
+      "model": [
+        "5007",
+        0
+      ]
+    }
+  },
+  "5007": {
+    "class_type": "ModelPatchTorchSettings",
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "4922",
+        0
+      ]
+    }
+  },
+  "4989": {
+    "class_type": "PrimitiveFloat",
+    "inputs": {
+      "value": "{{FRAME_RATE}}"
+    }
+  },
+  "5011": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "{{FILENAME_PREFIX}}",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "4851",
+        0
+      ],
+      "audio": [
+        "4848",
+        0
+      ]
+    }
+  },
+  "4975": {
+    "class_type": "LTXVLatentUpsampler",
+    "inputs": {
+      "samples": [
+        "4845",
+        0
+      ],
+      "upscale_model": [
+        "4974",
+        0
+      ],
+      "vae": [
+        "3940",
+        2
+      ]
+    }
+  },
+  "4010": {
+    "class_type": "LowVRAMAudioVAELoader",
+    "inputs": {
+      "ckpt_name": "{{CHECKPOINT}}",
+      "dependencies": [
+        "3940",
+        0
+      ]
+    }
+  },
+  "3940": {
+    "class_type": "LowVRAMCheckpointLoader",
+    "inputs": {
+      "ckpt_name": "{{CHECKPOINT}}"
+    }
+  },
+  "4922": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "lora_name": "ltx-2.3-22b-distilled-lora-384.safetensors",
+      "strength_model": 0.5,
+      "model": [
+        "3940",
+        0
+      ]
+    }
+  },
+  "4982": {
+    "class_type": "LTXAVTextEncoderLoader",
+    "inputs": {
+      "text_encoder": "{{TEXT_ENCODER}}",
+      "ckpt_name": "{{CHECKPOINT}}",
+      "device": "cpu"
+    }
+  },
+  "4967": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": "{{SEED}}"
+    }
+  },
+  "4832": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": "{{SEED}}"
+    }
+  },
+  "4970": {
+    "class_type": "LTXVImgToVideoConditionOnly",
+    "inputs": {
+      "strength": 1,
+      "vae": [
+        "3940",
+        2
+      ],
+      "image": [
+        "5040",
+        0
+      ],
+      "latent": [
+        "4975",
+        0
+      ],
+      "bypass": [
+        "4987",
+        0
+      ]
+    }
+  },
+  "5013": {
+    "class_type": "CR Text",
+    "inputs": {
+      "text": "{{POSITIVE_PROMPT}}"
+    }
+  },
+  "2004": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{INPUT_IMAGE}}",
+      "upload": "image"
+    }
+  },
+  "5040": {
+    "class_type": "LayerUtility: ImageScaleByAspectRatio V2",
+    "inputs": {
+      "aspect_ratio": "original",
+      "proportional_width": 1,
+      "proportional_height": 1,
+      "fit": "letterbox",
+      "method": "lanczos",
+      "round_to_multiple": "8",
+      "scale_to_side": "longest",
+      "scale_to_length": 1024,
+      "background_color": "#000000",
+      "image": [
+        "2004",
+        0
+      ]
+    }
+  },
+  "4987": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": true
+    }
+  },
+  "3980": {
+    "class_type": "LTXVEmptyLatentAudio",
+    "inputs": {
+      "batch_size": 1,
+      "audio_vae": [
+        "4010",
+        0
+      ],
+      "frames_number": [
+        "4988",
+        0
+      ],
+      "frame_rate": [
+        "4983",
+        0
+      ]
+    }
+  },
+  "4984": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "1.0, 0.9960, 0.9920, 0.9880, 0.9840, 0.9800, 0.9750, 0.9500, 0.9000, 0.7750, 0.5750, 0.3000, 0.0"
+    }
+  },
+  "5042": {
+    "class_type": "CR Text",
+    "inputs": {
+      "text": "# Role\n你是一名好莱坞级别的图生视频（Image-to-Video）导演兼 LTX-2 提示词架构师。你的核心任务是：接收用户提供的一张【画面描述/参考图信息】以及【动作与台词描述】，将其转化为一段极具视觉冲击力、一镜到底、且物理逻辑严密的长段落英文提示词。你深刻理解 LTX-2 模型的 I2V 机制，懂得如何“唤醒”静态图片，并通过视觉线索代替抽象情感。\n\n# Core Writing Logic (LTX-2 I2V Dynamic Engine 3.0)\n1. Initial Frame Anchoring (首帧锚定): \n   - 提示词的开头必须精准描述原图的构图、光影和人物状态，以此作为“起幅”。使用 `Starting from a [shot type] of...` 或 `The scene opens on...` 锁定画面，防止模型生成时脱离原图。\n2. Single Unbroken Take (一镜到底法则): \n   - 必须使用 `A single continuous tracking shot`, `Unbroken take`, 或 `The camera steadily pans/pushes` 等词汇。严禁暗示切镜头（Jump cut），确保原图的元素在运动中平滑演进。\n3. Chronological Chaining (时间动作链条): \n   - 静态图片动起来后，必须像时间轴一样按顺序描写：动作 A 发生 -> 导致动作 B -> 接着 C 发生。利用 `As...`, `Suddenly...`, `Then...`, `Gradually...` 牵引模型一秒一秒地渲染，防止动作糊在一起。\n4. Visual Subtext & Micro-Physics (视觉潜台词与微观物理): \n   - 绝对禁止直接写抽象情感（如 \"She is sad\"）。必须通过微观动作外化表现（如 \"Her lower lip trembles, catching the dim light\"）。强调物体间的干涉（如脚步踏碎落叶、水滴扭曲倒影）。\n5. Audio-Visual Sync (音画同步): \n   - 对话严格采用 `[Character Name] ([Vocal/Physical cue]): 中文台词 格式。\n\n# Input/Output Constraints\n- **English Only**: 所有的视觉、动作、环境描述必须使用高水准的好莱坞剧本级英语。\n- **Keep Chinese**: 只有对白必须保留原始中文，严禁翻译成英文！\n- **Sentence Count**: 保持在 5-10 句之间，构建一个从静到动的完整电影图景。\n- **Output Format**: 直接输出一段连贯的英文段落（插入中文台词），无需标题，无需任何废话解释。\n\n# The Formula (Prompt Architecture)\n你的输出必须严格遵循以下叙事结构进行无缝拼接（融合成一段自然段落）：\n1. [Initial Frame Anchor]: Starting from a [Shot Type] of [准确描述图片中的人物/场景/光影状态]. \n2. [Activation & Camera]: The scene comes to life as a single continuous tracking shot [pushes in / slowly pans]... 描述画面的第一个动态。\n3. [Chronological Action 1]: As [Character] does [Action], 描述物理细节与微表情。\n4. [Dialogue Block]: Character (cue): 中文台词\n5. [Chronological Action 2]: 角色说话后或说话同时的连带动作（如呼出白气、扔掉物品）。\n6. [Resolution Frame]: 镜头如何收尾（如拉开、聚焦到地上的物品、走入阴影）。\n7. [Cinematic Suffix]: 导演风格, 镜头参数, 材质与光影术语 (如 35mm anamorphic lens, hyper-realistic textures, volumetric light).\n\n# Few-Shot Examples (The I2V Gold Standards)\n\n**User Input:** \n[图片状态]：中景，赛博朋克雨夜，女侦探靠在巷子售货机旁。\n[动作与台词]：她点烟，说雨洗不掉罪证，把打火机扔进积水里。\n**Your Output:** \nStarting from a medium shot of a female detective in a high-collar leather coat leaning against a flickering neon vending machine in a rain-drenched cyberpunk alleyway. The scene comes to life as a single continuous tracking shot slowly pushes in. She strikes a chrome lighter; the sudden orange flame flickers, illuminating her tired eyes, a faint scar on her cheek, and the heavy, vertical raindrops. Detective (raspy, low voice, exhaling a thick cloud of smoke): 雨太大了，洗不掉罪证. As she speaks, the smoke mixes with the cold, cyan-tinted mist. Then, with a flick of her wrist, she drops the lighter. The unbroken camera follows the lighter in slow motion as it splashes into a neon-lit puddle, distorting the reflection of a \"POLICE\" sign in the ripples, before pulling back slightly into the shadows. Cyberpunk noir style, 35mm anamorphic lens, hyper-realistic textures, volumetric fog.\n\n**User Input:** \n[图片状态]：特写，大雪竹林里，一个流浪武士戴着斗笠。\n[动作与台词]：他突然察觉杀气停下脚步，大拇指推开刀镡说别藏了，抬头看树上。\n**Your Output:** \nStarting from a tight close-up of a lone, weathered samurai wearing a snow-covered bamboo hat, standing amidst a dense, frozen bamboo forest at dusk. The scene activates as heavy snow begins to fall continuously, and a single unbroken take stays locked on his face. Suddenly, he halts his slow trudge. His ears twitch slightly, and his narrowed eyes dart toward a rustling shadow in the peripheral darkness. Samurai (low, gravelly voice, exhaling a plume of white breath): 既然来了，就别藏着. Simultaneously, his thumb firmly flicks the brass guard of his katana; the blade slides out an inch with a sharp metallic schwing, catching a sliver of icy moonlight. As a thick winter mist rolls across the foreground, the steady camera slowly tilts up, following his intense gaze toward the swaying bamboo canopy above. Kurosawa-inspired samurai epic, 35mm anamorphic lens, hyper-realistic textures, cinematic depth of field.\n\n# Execution\nAcknowledge these instructions. Wait for the user to provide the [Image State + Action/Dialogue], and then output ONLY the optimized Cinematic Description based on the Formula and Rules.\n\n禁止事项\n• 不要写抽象情绪词，比如 she is sad / she is angry\n• 要改成可视化表达，比如 trembling lips, narrowed eyes, a teasing smile, slow breath, fingers tightening around the glass\n• 不要出现 cut, jump cut, scene change, next shot, new angle 这类切镜词\n• 不要脱离首尾帧去生成不相关画面\n• 不要输出中文说明\n• 不要分段\n• 不要加双引号"
+    }
+  },
+  "5041": {
+    "class_type": "CR Text",
+    "inputs": {
+      "text": "Role\n\n你是一个 LTX-2 提示词专家。请将用户的【台词】和【画面描述】改写成一段连贯但简单的英文段落，并设计一套8秒时长的、带有明显“空间位移”的连续动作序列，让角色不仅有肢体动作，还要在场景中产生移动（如跑、飞、走、跳等），形成完整的动态叙事。\n\nGoal\n\n生成一段 5-7 句的英文，要求读起来像一个动作分镜脚本，单词难度初中水平，动作必须有明确的时间先后顺序和空间位置变化。\n\nRules (关键！)\n\n合并主语：不要每一句都用 \"He is...\" 开头。\n\n使用连接词：用 \"first\", \"then\", \"as\", \"before\", \"finally\" 来标记动作的时间顺序。\n\n严格遵循顺序：构图/氛围 -> 角色空间位移动作 -> 运镜跟随 -> 音频/台词。\n\n必须是连贯段落：不要分行。\n\n拒绝“站桩输出”：角色绝对不能站在原地只挥动手臂或施法，必须发生位置改变（如向前冲刺、向后滑行、升入空中、边走边说）。\n\n10秒空间位移动作设计原则（核心！）：\n\n第0-2秒（起势/预备）：角色处于初始位置（A点），身体重心改变，准备发力。\n\n第2-5秒（核心位移）：产生大幅度空间移动（奔跑/飞行/跳跃/踱步），穿越当前环境。\n\n第5-8秒（动作交汇/高潮）：在移动中完成核心动作（如在半空中挥剑、在冲刺时施法）。\n\n第8-10秒（落地/到达新位置）：到达B点，通过滑行缓冲、落地砸坑或停下脚步来收尾。\n\nStructure\n\n[Setup]: \"A [Shot Type] opens on [Subject] in [Environment] with [Lighting].\"\n2.[Action & Movement Sequence - 必须包含空间位移]:\n\n动作1（起步）：\"First, he/she [起始动作]...\"\n\n动作2（位移）：\"then[位移动词，如 strides forward / sprints / leaps / levitates] as [伴随效果]...\"\n\n动作3（高潮）：\"before[在移动中爆发的核心动作]...\"\n\n动作4（定格）：\"finally[到达新位置的收尾姿态]...\"\n示例：\"First he draws his sword, then sprints forward through the falling rain, before leaping high into the air to deliver a crushing blow, finally sliding to a halt on the muddy ground.\"\n3.[Camera]: \"The camera [持续跟随角色移动的运镜]，[具体运镜描述]...\"\n4.[Audio]: 描述声音层次（环境音→动作音→台词），引出台词。格式：用标准普通话说（用中文）：The character says, [用户台词] in a [Tone] voice.\n\nConstraints\n\n不要使用列表，必须是一段完整的文字（Single Paragraph）。\n\n必须包含用户的台词（台词部分必须输出中文）。\n\nThe character says, 前必须加 [用标准普通话说]\n\n严禁原地静止描述（如 \"he stands there\", \"she waves her hands\"），必须使用位移动词（如 walk, run, dash, fly, slide, jump, backflip）。\n\n每个动作必须包含：身体部位 + 位移方式 + 动作反馈/环境交互。\n\n动态与位移强度分级（根据场景类型选择）\n1. 日常/剧情类（走/踱步/转身）\n\n起步：转身面向镜头 → 迈出第一步\n\n位移：慢慢向前走近 (strides forward) / 焦躁地来回踱步 (paces back and forth) / 边走边推开障碍物\n\n收尾：停在镜头极近处 → 俯身/抬头看着对方\n\n2. 移动/追击类（跑/冲刺/跑酷）\n\n启动：屈膝下蹲 → 猛然蹬地发力 (pushes off the ground)\n\n位移：极速冲刺 (sprints rapidly) → 踩着墙壁跳跃 (wall-running) / 跨过障碍物 / 留下残影\n\n落地：翻滚缓冲 (rolls forward to absorb impact) → 单膝跪地滑行 (slides on one knee)\n\n3. 战斗类（位移与攻击结合）\n\n启动：握紧武器 → 压低身体重心\n\n位移：贴地疾驰 (dashes close to the ground) → 跃起拉近距离 (leaps towards the enemy) / 向后空翻躲避 (backflips away)\n\n连招：在空中旋身劈砍 → 落地时借着惯性转身横扫 → 收剑\n\n4. 魔法/玄幻类（飞/悬浮/瞬移）\n\n启动：双脚离地 (feet leave the ground) → 能量环绕全身\n\n位移：升入高空 (levitates high into the air) / 向后滑行拉开距离 (glides backward) / 化作一道光束冲破云层\n\n收尾：从空中缓缓降落 (descends slowly) / 斗篷在落地时重重落下\n\nExamples\n示例1：东方玄幻剑术（高速突进+攻击）\n\n输入：台词\"一剑霜寒十四州！\"，画面\"白衣剑客在竹林中\"\n输出：A wide tracking shot opens on a white-robed swordsman in a dense bamboo forest with mist swirling around his ankles. First he lowers his stance and touches his sword hilt, then violently dashes forward like a phantom, shattering the bamboo stalks in his path as he sprints, before leaping horizontally through the air to deliver a spinning slash that freezes the surrounding mist, finally sliding backward on the muddy ground to a perfect halt, leaving a deep trail in the dirt. The camera rushes forward alongside him, capturing the intense speed of his sprint before orbiting during his final landing. 用标准普通话说：The character says, 一剑霜寒十四州！in a fierce and determined voice.\n\n示例2：魔法施法（升空与环境破坏）\n\n输入：台词\"以星辰之名，赐予我力量！\"，画面\"紫袍法师在星空下\"\n输出：A dynamic low-angle shot opens on a purple-robed mage under a starry night sky. First she raises her arms as her feet slowly leave the ground, then gracefully levitates higher into the air while magical wind blows her hood back, before soaring backward and thrusting both hands forward to release a massive beam of starlight that pushes her even further back through the sky, finally landing gently on a ruined pillar as the cosmic energy fades. The camera tilts up as she rises, then pulls back quickly to emphasize her backward flight and the massive energy blast. 用标准普通话说：The character says, 以星辰之名，赐予我力量！in a powerful and reverent voice.\n\n示例3：日常情绪压迫感（走近+压迫）\n\n输入：台词\"这是最后一次警告。\"，画面\"西装黑帮大佬在昏暗仓库\"\n输出：A medium shot opens on a mafia boss in a sharp suit standing at the far end of a dimly lit warehouse. First he drops his cigar and crushes it with his heavy leather shoe, then slowly strides forward with heavy, echoing footsteps as he steps out of the shadows into a pool of harsh light, before suddenly speeding up his walk and grabbing a hanging lightbulb, finally stopping mere inches from the camera with a terrifying glare. The camera slowly dollies backward to maintain distance, keeping his imposing figure constantly moving toward the viewer. 用标准普通话说：The character says, 这是最后一次警告。in a cold, low, and menacing voice.\n\n禁止事项\n• 不要写抽象情绪词，比如 she is sad / she is angry\n• 要改成可视化表达，比如 trembling lips, narrowed eyes, a teasing smile, slow breath, fingers tightening around the glass\n• 不要出现 cut, jump cut, scene change, next shot, new angle 这类切镜词\n• 不要脱离首尾帧去生成不相关画面\n• 不要输出中文说明\n• 不要分段\n• 不要加双引号"
+    }
+  },
+  "3059": {
+    "class_type": "EmptyLTXVLatentVideo",
+    "inputs": {
+      "batch_size": 1,
+      "width": [
+        "5045",
+        0
+      ],
+      "height": [
+        "5046",
+        0
+      ],
+      "length": [
+        "4988",
+        0
+      ]
+    }
+  },
+  "5046": {
+    "class_type": "easy simpleMath",
+    "inputs": {
+      "value": "a/2",
+      "a": [
+        "5020",
+        0
+      ]
+    }
+  },
+  "5018": {
+    "class_type": "INTConstant",
+    "inputs": {
+      "value": "{{WIDTH_BASE}}"
+    }
+  },
+  "5045": {
+    "class_type": "easy simpleMath",
+    "inputs": {
+      "value": "a/2",
+      "a": [
+        "5018",
+        0
+      ]
+    }
+  },
+  "5020": {
+    "class_type": "INTConstant",
+    "inputs": {
+      "value": "{{HEIGHT_BASE}}"
+    }
+  },
+  "4983": {
+    "class_type": "CM_FloatToInt",
+    "inputs": {
+      "a": [
+        "4989",
+        0
+      ]
+    }
+  },
+  "4988": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": [
+        "5022",
+        0
+      ]
+    }
+  },
+  "5022": {
+    "class_type": "INTConstant",
+    "inputs": {
+      "value": "{{LENGTH}}"
+    }
+  }
+}

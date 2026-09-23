@@ -10,6 +10,7 @@
 |------|------|------|
 | **LuminaForge 桌面应用** | `scripts/` `app/` `web/` `static/` | FastAPI 后端 + React 前端，PyInstaller 打包为桌面 exe，提供 Web UI 管理视频生成全流程 |
 | **story2 管线脚本** | `story2/` | 独立 Python 脚本管线，直接通过 ComfyUI API + CosyVoice2 API + FFmpeg 生成视频，无需启动桌面应用 |
+| **工业化流水线（新）** | `engines/` `quality/` `scheduler/` `pipeline/` `config/` `post/` | 模块化、配置驱动、带自动质量门和批量队列的新一代出片链路。统一抽象本地/云端双引擎，含精确字幕、合成、成本治理。**使用手册见 [docs/PIPELINE_USE.md](docs/PIPELINE_USE.md)** |
 | **CosyVoice2 集成** | `cosyvoice2/` | 改造版 TTS 服务端（参考音按需放入 cn_refs/） |
 | **ComfyUI 工作流** | `comfyui/` | LTX I2V / 文生图等 JSON 工作流模板 + 低显存重启脚本 |
 

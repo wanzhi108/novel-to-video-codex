@@ -17,6 +17,7 @@ interface SettingsStore {
   useWan21: boolean;
   useKenBurns: boolean;
   useDualFrame: boolean;
+  useEnvAnchor: boolean;
 
   // TTS
   ttsEnabled: boolean;
@@ -62,6 +63,7 @@ const DEFAULTS = {
   useWan21: false,
   useKenBurns: false,
   useDualFrame: false,
+  useEnvAnchor: false,
   ttsEnabled: true,
   ttsVoice: "zh-CN-XiaoxiaoNeural",
   ttsRate: "+5%",

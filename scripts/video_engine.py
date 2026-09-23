@@ -17,6 +17,15 @@ import asyncio, subprocess, sys, os, json, copy, random, shutil
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent
+
+from app.config import (
+    WAN21_BLOCKS_TO_SWAP,
+    WAN21_FPS,
+    WAN21_FRAMES,
+    WAN21_HEIGHT,
+    WAN21_STEPS,
+    WAN21_WIDTH,
+)
 FFMPEG = os.environ.get("FFMPEG_PATH") or shutil.which("ffmpeg") or "ffmpeg"
 FFPROBE = os.environ.get("FFPROBE_PATH") or shutil.which("ffprobe") or "ffprobe"
 
@@ -121,15 +130,22 @@ async def _wan21(scene, scene_dir, job, ctx):
             vid_seed = random.randint(0, 2**32 - 1)
             wan21_template = lw("img2vid_wan21")
             workflow = fw(wan21_template, {
-                "POSITIVE_PROMPT": vid_base_prompt,
+                "POSITIVE_PROMPT": vid_base_prompt or getattr(scene, 'video_prompt', ''),
+                "NEGATIVE_PROMPT": getattr(scene, 'negative_prompt', '') or
+                    "low quality, blurry, deformed, extra fingers, bad anatomy, watermark, text",
                 "WAN21_T5_ENCODER": job.wan21_t5_encoder,
                 "WAN21_VAE": job.wan21_vae,
                 "WAN21_MODEL": job.wan21_model,
                 "WAN21_CLIP_VISION": job.wan21_clip_vision,
                 "INPUT_IMAGE": uploaded_name,
                 "SEED": vid_seed,
-                "WIDTH": 720,
-                "HEIGHT": 1280,
+                "WIDTH": WAN21_WIDTH,
+                "HEIGHT": WAN21_HEIGHT,
+                "LENGTH": WAN21_FRAMES,
+                "FRAME_RATE": WAN21_FPS,
+                "STEPS": WAN21_STEPS,
+                "BLOCKS_TO_SWAP": WAN21_BLOCKS_TO_SWAP,
+                "FILENAME_PREFIX": f"novel2vid/scene_{scene.id:03d}",
             })
             pid = await comfyui.submit_workflow(workflow)
             res = await comfyui.wait_for_result_ws(pid, job_id=job.id, scene_id=scene.id, timeout=1800)
@@ -380,9 +396,13 @@ async def _ltx_single(scene, scene_dir, job, ctx):
     if not Path(img).exists(): return ""
 
     vid_base_prompt = ctx.get("vid_base_prompt", "")
-    cam_dir = _build_ltx_camera_directive(scene)
-    if cam_dir:
-        vid_base_prompt = (vid_base_prompt + ". " + cam_dir).strip()
+    preserve = ctx.get("preserve_first_frame", True)
+    if preserve:
+        vid_base_prompt = (vid_base_prompt + ". locked camera, subtle micro motion, keep first frame composition and character identity").strip()
+    else:
+        cam_dir = _build_ltx_camera_directive(scene)
+        if cam_dir:
+            vid_base_prompt = (vid_base_prompt + ". " + cam_dir).strip()
     scene_frames = ctx.get("scene_frames", 97)
     img2vid_template = lw("img2vid")
 
@@ -430,6 +450,76 @@ async def _ltx_single(scene, scene_dir, job, ctx):
 # ─── 调度器 ─────────────────────────────────────────────
 
 # 所有可用模式
+async def _wan_a14b(scene, scene_dir, job, ctx) -> str:
+    """Wan 2.2 I2V-A14B 稳定管线（参考图强化角色一致性）。"""
+    import asyncio, shutil
+    from pathlib import Path
+    from engines.wan import WanEngine
+    from engines.base import GenerateRequest
+    scene_dir = Path(scene_dir)
+    kf = scene_dir / "keyframe.png"
+    # 关键帧/首帧兜底：常见命名
+    if not kf.exists():
+        for cand in ("first_frame.png", "start.png", "kf.png"):
+            if (scene_dir / cand).exists():
+                kf = scene_dir / cand
+                break
+    if not kf.exists():
+        # 从目录里挑一张 png
+        pngs = sorted(scene_dir.glob("*.png"))
+        if not pngs:
+            return _ken_burns(scene, scene_dir, job, ctx)
+        kf = pngs[0]
+    # 角色参考图（人设锁定）
+    ref = None
+    for cand in ("reference.png", "character.png", "char_ref.png"):
+        if (scene_dir / cand).exists():
+            ref = scene_dir / cand
+            break
+    prompt = getattr(scene, "video_prompt", None) or getattr(scene, "description", "") or ""
+    req = GenerateRequest(
+        prompt=prompt, first_frame=kf,
+        reference_images=[ref] if ref else [],
+        width=384, height=672, duration_seconds=2.0, fps=24, seed=None,
+        output_dir=scene_dir, output_name="wan_a14b",
+        timeout_seconds=2500,
+    )
+    clip = await WanEngine().generate(req)
+    return str(clip.video_path)
+
+
+async def _wan5b(scene, scene_dir, job, ctx) -> str:
+    """Wan 2.2 TI2V-5B 轻量图生视频（用户选定的默认主引擎，8GB 显存稳定）。
+
+    单模型非 MoE，比 A14B 更快且不依赖 8GB 下易卡的 clip_vision 参考条件；
+    引擎内部自动做 RIFE 补帧(48fps) + 4x 超分。
+    """
+    from pathlib import Path
+    from engines.wan5b import Wan5BEngine
+    from engines.base import GenerateRequest
+    scene_dir = Path(scene_dir)
+    kf = scene_dir / "keyframe.png"
+    if not kf.exists():
+        for cand in ("first_frame.png", "start.png", "kf.png"):
+            if (scene_dir / cand).exists():
+                kf = scene_dir / cand
+                break
+    if not kf.exists():
+        pngs = sorted(scene_dir.glob("*.png"))
+        if not pngs:
+            return ""
+        kf = pngs[0]
+    prompt = getattr(scene, "video_prompt", None) or getattr(scene, "description", "") or ""
+    req = GenerateRequest(
+        prompt=prompt, first_frame=kf,
+        width=704, height=1280, duration_seconds=2.0, fps=24, seed=None,
+        output_dir=scene_dir, output_name="wan5b",
+        timeout_seconds=2400,
+    )
+    clip = await Wan5BEngine().generate(req)
+    return str(clip.video_path)
+
+
 VIDEO_MODES = {
     "cloud_t2v":  _cloud_t2v,
     "ltx_t2v":    _ltx_t2v,
@@ -439,6 +529,8 @@ VIDEO_MODES = {
     "ltx_single": _ltx_single,
     "parallax":   _parallax,
     "ken_burns":  _ken_burns,
+    "wan_i2v":    _wan_a14b,
+    "wan5b":      _wan5b,
 }
 
 
@@ -469,8 +561,9 @@ def _classify_scene_video_mode(scene, job=None) -> str:
     if is_env or big_shot:
         return 'ken_burns'
 
-    # 其余默认 LTX（有角色、对白、动作、情绪都走真视频）
-    return 'ltx'
+    # 其余默认 Wan 5B（有角色、对白、动作、情绪都走真视频；
+    # 用户选定 Wan 2.2 TI2V-5B 为生产主引擎，8GB 稳定且首帧忠实度高）
+    return 'wan5b'
 
 
 def _is_static_video(path: str) -> bool:
@@ -536,13 +629,45 @@ async def dispatch(scene, scene_dir, ctx: dict) -> str:
             return r
         # 云端失败，继续走本地路径
 
+    # ── Wan 2.2 I2V 稳定管线模式 ──
+    if mode == "wan_i2v":
+        print(f"[VideoEngine] 场景 {scene.id}: Wan 2.2 I2V 稳定管线模式", flush=True)
+        r = await _wan_a14b(scene, scene_dir, job, ctx)
+        if r:
+            scene.video_mode_used = "wan_i2v"
+            return r
+        # Wan 失败，降级到 Ken Burns（如果有图片）
+        if local_img and local_img != "__T2V_SKIPPED__" and Path(local_img).exists():
+            r = await _ken_burns(scene, scene_dir, job, ctx)
+            if r:
+                scene.video_mode_used = "ken_burns"
+                return r
+        return ""
+
+    # ── v12.0: 智能路由 — 根据场景特征选择主用引擎 ──
+    if mode == "wan5b":
+        print(f"[VideoEngine] 场景 {scene.id}: Wan 2.2 TI2V-5B 模式", flush=True)
+        r = await _wan5b(scene, scene_dir, job, ctx)
+        if r:
+            scene.video_mode_used = "wan5b"
+            return r
+        # Wan 5B 失败，降级到 Ken Burns（如果有图片）
+        if local_img and local_img != "__T2V_SKIPPED__" and Path(local_img).exists():
+            r = await _ken_burns(scene, scene_dir, job, ctx)
+            if r:
+                scene.video_mode_used = "ken_burns"
+                return r
+        return ""
+
     # ── v12.0: 智能路由 — 根据场景特征选择主用引擎 ──
     primary = _classify_scene_video_mode(scene, job)
     print(f"[VideoEngine] 场景 {scene.id}: 路由={primary} (mood={getattr(scene, 'mood', '')} "
           f"intensity={intensity} camera={camera[:15]})", flush=True)
 
     # 构建尝试顺序
-    if primary == 'ltx':
+    if primary == 'wan5b':
+        ordered = ['wan5b', 'ltx_single', 'ken_burns']
+    elif primary == 'ltx':
         ordered = ['wan21', 'ltx_single', 'ken_burns', 'dual_frame', 'parallax']
     elif primary == 'dual_frame' and job and getattr(job, 'use_dual_frame', False):
         ordered = ['dual_frame', 'ltx_single', 'ken_burns']

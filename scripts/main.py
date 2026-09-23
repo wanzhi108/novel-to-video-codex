@@ -33,6 +33,30 @@ if sys.platform == "win32":
     except Exception:
         pass  # 非关键：仅影响控制台输出编码，不影响功能
 
+# ─── 代理自动设置（v12.2 fix）：Edge-TTS/DeepSeek 等走外网调用需要代理 ───
+# 若本机 Clash(7897) 可用且未设代理，则设置 HTTP_PROXY/HTTPS_PROXY，
+# 否则 Edge-TTS(连微软)会因无网络而失败(降级为静默音频)。
+def _setup_proxy():
+    try:
+        if os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY"):
+            return  # 已有代理，不覆盖
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.3)
+        if s.connect_ex(("127.0.0.1", 7897)) == 0:
+            os.environ["HTTP_PROXY"] = "http://127.0.0.1:7897"
+            os.environ["HTTPS_PROXY"] = "http://127.0.0.1:7897"
+            # 关键：本地 ComfyUI(127.0.0.1) 必须绕过代理，否则 /prompt 等被代理拦截报 502
+            os.environ["NO_PROXY"] = "127.0.0.1,localhost,0.0.0.0,::1"
+            os.environ["no_proxy"] = "127.0.0.1,localhost,0.0.0.0,::1"
+            print("[Proxy] Clash 7897 可用，已设置代理(本地 ComfyUI 走 NO_PROXY 直连)", flush=True)
+        s.close()
+    except Exception:
+        pass
+
+
+_setup_proxy()
+
 # 导入模块化组件
 from app.config import DEEPSEEK_API_KEY as DEEPSEEK_DEFAULT_KEY
 from app.config import COMFYUI_URL, COMFYUI_MODELS_DIR, OUTPUT_DIR, WORKFLOW_DIR
@@ -388,7 +412,7 @@ class ComfyUIClient:
     async def get_checkpoints(self) -> list[str]:
         """从ComfyUI API获取可用checkpoint列表，并过滤掉损坏文件"""
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, trust_env=False) as client:  # 本地 ComfyUI 不走代理
                 resp = await client.get(f"{self.base_url}/object_info/CheckpointLoaderSimple")
                 resp.raise_for_status()
                 data = resp.json()
@@ -400,6 +424,7 @@ class ComfyUIClient:
                         checkpoints = cfg
                 else:
                     return []
+            return checkpoints
         except Exception as e:
             self._last_comfyui_error = f"get_checkpoints: {e}"
             logger.warning(f"[ComfyUI] 获取checkpoints列表失败: {e}")
@@ -579,7 +604,7 @@ class ComfyUIClient:
         vae_list = await self.get_vae_list()
         loras: list[str] = []
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
                 resp = await client.get(f"{self.base_url}/object_info/LoraLoader")
                 resp.raise_for_status()
                 data = resp.json()
@@ -593,7 +618,7 @@ class ComfyUIClient:
     async def get_vae_list(self) -> list[str]:
         """获取可用VAE列表"""
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
                 resp = await client.get(f"{self.base_url}/object_info/VAELoader")
                 resp.raise_for_status()
                 data = resp.json()
@@ -906,6 +931,82 @@ def fill_workflow(template: dict, replacements: dict) -> dict:
             # 字符串类型：保留引号，只替换内容
             json_str = json_str.replace(placeholder, json.dumps(str(val)))
     return json.loads(json_str)
+
+def _apply_env_anchor_to_workflow(workflow: dict, env_image_name: str, denoise: float = 0.62) -> dict:
+    """v13.1: 将已填充的 txt2img 工作流改为环境参考图 img2img 锚定。
+
+    用环境图 VAEEncode 替换初始 EmptyLatentImage，低 denoise 采样保住背景/场景一致；
+    Hires.fix 模板只替换首轮 KSampler，二轮高清增强不受影响。
+    """
+    workflow = copy.deepcopy(workflow)
+    empty_ids = {nid for nid, node in workflow.items() if node.get("class_type") == "EmptyLatentImage"}
+    workflow["9901"] = {"class_type": "LoadImage", "inputs": {"image": env_image_name}}
+    target_w = 768
+    target_h = 1152
+    for nid in empty_ids:
+        inputs = workflow[nid].get("inputs", {})
+        target_w = int(inputs.get("width", target_w))
+        target_h = int(inputs.get("height", target_h))
+        break
+    workflow["9901b"] = {
+        "class_type": "ImageScale",
+        "inputs": {
+            "image": ["9901", 0],
+            "upscale_method": "lanczos",
+            "width": target_w,
+            "height": target_h,
+            "crop": "center",
+        },
+    }
+    workflow["9902"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["9901b", 0], "vae": ["1", 2]}}
+    for node in workflow.values():
+        if node.get("class_type") == "KSampler":
+            latent = node["inputs"].get("latent_image")
+            if isinstance(latent, list) and len(latent) == 2 and latent[0] in empty_ids:
+                node["inputs"]["latent_image"] = ["9902", 0]
+                node["inputs"]["denoise"] = denoise
+    for nid in empty_ids:
+        workflow.pop(nid, None)
+    return workflow
+
+
+def _normalize_image_to_1080p(image_path: str) -> str:
+    """v13.2: 将生成图裁剪为 9:16 并升到 1080×1920。
+
+    Hires 二轮放大未开启时作为轻量兜底；已开启时仅做微小居中裁剪。
+    失败时原样返回，不阻塞生成。
+    """
+    from PIL import Image
+    try:
+        p = Path(image_path)
+        if not p.exists():
+            return image_path
+        img = Image.open(p)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        w, h = img.size
+        target_ratio = 9 / 16
+        cur_ratio = w / h
+        if abs(cur_ratio - target_ratio) > 0.001:
+            if cur_ratio > target_ratio:
+                new_w = int(h * target_ratio)
+                left = (w - new_w) // 2
+                img = img.crop((left, 0, left + new_w, h))
+            else:
+                new_h = int(w / target_ratio)
+                top = (h - new_h) // 2
+                img = img.crop((0, top, w, top + new_h))
+        if img.size != (1080, 1920):
+            img = img.resize((1080, 1920), Image.LANCZOS)
+        tmp = p.with_name(p.stem + ".1080p.png")
+        img.save(tmp, "PNG")
+        p.unlink(missing_ok=True)
+        tmp.rename(p)
+        return str(p)
+    except Exception as e:
+        print(f"[1080p] 图片归一化失败(不阻塞): {str(e)[:100]}", flush=True)
+        return image_path
+
 
 # ─── FFmpeg 工具 ──────────────────────────────────────────
 def find_ffmpeg() -> str:
@@ -2976,6 +3077,94 @@ def _build_global_character_desc(job) -> str:
                     lines.append(f"{name}: {desc}")
 
     return "\n".join(lines)
+
+
+def _build_canonical_character_map(job) -> dict:
+    """生成角色名 -> 稳定视觉卡（权威卡），提示词生成时逐字复用。
+
+    优先使用 character_analysis 中的 kling_prompt（英文、可直接进生成器），
+    其次回退到结构化外貌字段；没有预分析时使用 v6.0 角色对象。
+    """
+    canon: dict[str, str] = {}
+
+    if getattr(job, "character_analysis", None) and isinstance(job.character_analysis.get("characters"), list):
+        for c in job.character_analysis["characters"]:
+            name = (c.get("name") or "").strip()
+            if not name:
+                continue
+            kling = (c.get("kling_prompt") or "").strip()
+            if kling:
+                canon[name] = f"{name}: {kling}"
+                continue
+
+            parts = []
+            for key, label in (
+                ("gender", "gender"),
+                ("age_appearance", "age"),
+                ("physical_description", ""),
+                ("face_detail", ""),
+                ("hair_style", ""),
+                ("eye_detail", ""),
+                ("typical_clothing", "wearing"),
+                ("special_marks", ""),
+                ("typical_expression", "expression"),
+            ):
+                val = (c.get(key) or "").strip()
+                if not val or val == "未提及":
+                    continue
+                if label == "wearing":
+                    parts.append(f"wearing {val}")
+                elif label:
+                    parts.append(f"{label}: {val}")
+                else:
+                    parts.append(val)
+            if parts:
+                canon[name] = f"{name}: {', '.join(parts)}"
+
+    if not canon and getattr(job, "characters", None):
+        for c in job.characters:
+            name = (getattr(c, "name", "") or "").strip()
+            if not name:
+                continue
+            kling = (getattr(c, "kling_prompt", "") or "").strip()
+            if kling:
+                canon[name] = f"{name}: {kling}"
+                continue
+
+            parts = []
+            for val in (getattr(c, "appearance", ""), getattr(c, "body_type", "")):
+                if val and val != "未提及":
+                    parts.append(str(val).strip())
+            clothing = (getattr(c, "clothing", "") or "").strip()
+            if clothing and clothing != "未提及":
+                parts.append(f"wearing {clothing}")
+            if parts:
+                canon[name] = f"{name}: {', '.join(parts)}"
+
+    return canon
+
+
+def _format_canonical_characters(canon: dict, scene=None) -> str:
+    """把权威卡渲染成 prompt 中的高优先级上下文；scene 非空时只保留本镜出场角色。"""
+    if not canon:
+        return "（无角色权威视觉卡）"
+
+    if scene is not None:
+        scene_blob = " ".join([
+            getattr(scene, "characters", "") or "",
+            getattr(scene, "description", "") or "",
+            getattr(scene, "subtitle_text", "") or "",
+        ])
+        if scene_blob.strip():
+            canon = {name: card for name, card in canon.items() if name and name in scene_blob}
+        else:
+            canon = {}
+    if not canon:
+        return "（本镜未匹配角色权威视觉卡）"
+    return (
+        "角色权威视觉卡（跨镜必须逐字复用，优先级最高，"
+        "可覆盖上一镜连续性提示）：\n" + "\n".join(canon.values())
+    )
 
 
 def _build_scene_character_desc(job, scene) -> str:
@@ -5169,6 +5358,25 @@ STORY_STRUCTURE_SYSTEM = """你是一位好莱坞级别的剧本分析师和故�
 2. 分析必须基于原文实际内容，不能虚构情节
 3. 情绪强度用 1-10 数值，便于分镜生成时参考"""
 
+# ─── v13: 长文全局摘要 Prompt ───────────────────────────
+NOVEL_SUMMARY_SYSTEM = """你是一位擅长长篇小说拆章总结的编剧。你的任务不是创作，而是把给定小说片段压缩成可供后续分镜使用的紧凑摘要，确保即使原文被切分，后面的分镜生成器仍掌握全文主线。
+
+## 返回格式（严格 JSON）
+```json
+{
+  "chunk_summary": "150-300字中文摘要，保留本片段所有推动情节的关键事件、冲突、反转与结局",
+  "key_characters": ["本片段出场的关键角色名"],
+  "key_events": ["按时间顺序列出3-8个关键事件"],
+  "cliffhangers": ["本片段末尾留下的悬念，无则空数组"]
+}
+```
+
+## 强制规则
+1. 只返回 JSON 对象，禁止任何其他文字
+2. 必须覆盖本片段内的全部重要情节，不能省略转折和高潮
+3. 角色名必须使用原文中文名
+4. 摘要要具体到“谁在哪里做了什么、结果如何”，不要泛泛而谈"""
+
 # ─── v6.3: 角色预分析 Prompt（融合v6.2 15维度 + v4.0声音/Kling字段） ──
 CHARACTER_ANALYSIS_SYSTEM = """你是一位好莱坞级角色设计师兼AI绘画提示词工程师。从小说文本中以导演和画师的双重视角，提取所有角色并构建完整的视觉档案+声音档案。
 
@@ -6369,6 +6577,180 @@ def _compact_environment_context(environment_analysis: dict | None) -> str:
     return "环境档案（跨镜一致参考）:\n" + "\n".join(lines)
 
 
+# ─── v13: 长文分块与全文摘要辅助 ──────────────────────
+def _split_novel_chunks(novel_text: str, max_chars: int = 6000) -> list[str]:
+    """按段落/句子边界切分长文，避免在词中间硬切。"""
+    if not novel_text:
+        return []
+    text = novel_text.strip()
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks: list[str] = []
+    current = ""
+
+    def _flush() -> None:
+        nonlocal current
+        if current.strip():
+            chunks.append(current.strip())
+        current = ""
+
+    def _push_part(part: str) -> None:
+        nonlocal current
+        if not part.strip():
+            return
+        if current and len(current) + len(part) + 2 > max_chars:
+            _flush()
+        current = f"{current}\n\n{part}" if current else part
+
+    paragraphs = re.split(r"\n\s*\n", text)
+    for para in paragraphs:
+        if len(para) <= max_chars:
+            _push_part(para)
+            continue
+        sentences = re.split(r"(?<=[。！？!?；;])", para)
+        for sentence in sentences:
+            if not sentence.strip():
+                continue
+            while len(sentence) > max_chars:
+                cut = max_chars
+                for pos in range(max_chars - 1, max_chars // 2, -1):
+                    if sentence[pos] in "，,、 ":
+                        cut = pos + 1
+                        break
+                _flush()
+                chunks.append(sentence[:cut].strip())
+                sentence = sentence[cut:]
+            _push_part(sentence)
+    _flush()
+    return chunks or [text]
+
+
+async def _ensure_novel_summary(job, llm_key: str = "") -> str:
+    """长文自动生成全文章节化摘要；短文本直接返回空串，避免多余 API 调用。"""
+    if getattr(job, "novel_summary", ""):
+        return job.novel_summary
+    if not job.novel_text:
+        return ""
+
+    api_key = llm_key or getattr(job, "deepseek_key", "") or DEEPSEEK_DEFAULT_KEY
+    chunks = _split_novel_chunks(job.novel_text)
+    if len(chunks) <= 1:
+        job.novel_summary = ""
+        return ""
+
+    summaries = []
+    for idx, chunk in enumerate(chunks, 1):
+        try:
+            user_msg = (
+                "请对以下小说片段进行章节化摘要，严格按照 SYSTEM PROMPT 返回 JSON：\n\n"
+                f"## 当前片段（{idx}/{len(chunks)}） ##\n"
+                "## 原文开始 ##\n"
+                f"{chunk}\n"
+                "## 原文结束 ##"
+            )
+            raw = await call_deepseek(
+                api_key,
+                NOVEL_SUMMARY_SYSTEM,
+                user_msg,
+                max_tokens=2048,
+                temperature=0.2,
+            )
+            data = extract_json_object(raw)
+            summary = (data.get("chunk_summary") or data.get("summary") or "").strip()
+            if summary:
+                summaries.append(f"[{idx}/{len(chunks)}] {summary}")
+        except Exception as e:
+            print(f"[Summary] 片段 {idx} 摘要失败: {str(e)[:100]}", flush=True)
+
+    if not summaries:
+        return ""
+    job.novel_summary = "全文章节化摘要（长文分镜必须覆盖，不得遗漏后文）：\n" + "\n".join(summaries)
+    return job.novel_summary
+
+
+def _parse_scene_from_raw(raw: dict, scene_id: int) -> Scene:
+    """统一把 LLM 返回的分镜 dict 转为 Scene，两个分镜入口共用。"""
+    characters = raw.get("characters", "")
+    if isinstance(characters, list):
+        characters = "; ".join(characters) if characters else "无"
+
+    subtitle_text = raw.get("subtitle_text", raw.get("narration", ""))
+    subtitle_display = subtitle_text if len(subtitle_text) <= 60 else subtitle_text[:57] + "..."
+    try:
+        emotional_intensity = int(float(raw.get("emotional_intensity", 5)))
+    except (ValueError, TypeError):
+        emotional_intensity = 5
+
+    return Scene(
+        id=scene_id,
+        subtitle_text=subtitle_text,
+        subtitle_display=subtitle_display,
+        title=raw.get("title", f"场景 {scene_id}"),
+        description=raw.get("description", ""),
+        characters=characters,
+        setting=raw.get("setting", ""),
+        mood=raw.get("mood", ""),
+        camera=raw.get("camera", ""),
+        duration=raw.get("duration", "5s"),
+        continuity_note=raw.get("continuity_note", ""),
+        emotional_intensity=emotional_intensity,
+        visual_motif_note=raw.get("visual_motif_note", ""),
+        story_act=raw.get("story_act", ""),
+        story_position=raw.get("story_position", ""),
+        storytelling_rhythm=raw.get("storytelling_rhythm", ""),
+        shot_size=raw.get("shot_size", ""),
+    )
+
+
+async def _check_story_coverage(job, scenes: list[Scene]) -> dict:
+    """检查关键角色是否在分镜中出场，写入 job.story_coverage。"""
+    checked = []
+    if job.character_analysis and isinstance(job.character_analysis.get("characters"), list):
+        for c in job.character_analysis["characters"]:
+            importance = str(c.get("importance_level", ""))
+            role = str(c.get("role", ""))
+            if importance in ("primary", "main antagonist", "secondary") or role in ("主角", "反派"):
+                name = (c.get("name") or "").strip()
+                if name and name not in checked:
+                    checked.append(name)
+    if not checked and getattr(job, "characters", None):
+        for c in job.characters:
+            name = getattr(c, "name", "").strip()
+            if name and name not in checked:
+                checked.append(name)
+
+    corpus = []
+    for s in scenes:
+        corpus.extend([
+            getattr(s, "characters", "") or "",
+            getattr(s, "description", "") or "",
+            getattr(s, "subtitle_text", "") or "",
+        ])
+    corpus_text = "\n".join(corpus)
+    covered = [n for n in checked if n in corpus_text]
+    missing = [n for n in checked if n not in corpus_text]
+    ratio = round(len(covered) / len(checked), 2) if checked else 1.0
+
+    job.story_coverage = {
+        "checked": len(checked),
+        "covered": len(covered),
+        "missing": missing,
+        "ratio": ratio,
+    }
+    if missing:
+        print(f"[Coverage] 分镜未覆盖角色: {', '.join(missing)}", flush=True)
+        try:
+            await broadcast_progress(job.id, {
+                "type": "coverage_warning",
+                "missing": missing,
+                "ratio": ratio,
+            })
+        except Exception:
+            pass
+    return job.story_coverage
+
+
 @app.post("/api/generate-storyboard")
 async def generate_storyboard(job_id: str, bypass_safety: bool = False):
     """v5.0 好莱坞级分镜生成 — 先执行故事结构预分析，再生成分镜
@@ -6403,6 +6785,11 @@ async def generate_storyboard(job_id: str, bypass_safety: bool = False):
 
         story_structure = job.story_structure or {}
         structure_context = json.dumps(story_structure, ensure_ascii=False, indent=2) if story_structure else "（无预分析结果）"
+        max_scenes = int(getattr(job, "max_scenes", 0) or 0)
+        scene_limit_note = (
+            f"\n【测试模式】分镜总数最多 {max_scenes} 个，优先保留开篇冲突、关键反转和结尾钩子。"
+            if max_scenes > 0 else ""
+        )
 
         # ── v5.1：内容安全预检（红果4月7日审核新规）──
         # v9.6: 支持跳过审核（环境变量 BYPASS_SAFETY_CHECK=1 或 API 参数 bypass_safety=true）
@@ -6430,18 +6817,10 @@ async def generate_storyboard(job_id: str, bypass_safety: bool = False):
             })
 
         # ── 将完整原文 + 结构分析一并送入 DeepSeek ──
-        # v9.5: 降至 15000 字，避免 storyboard prompt 超出 DeepSeek 64K 上下文
-        MAX_TEXT = 15000
-        novel_text = job.novel_text
-        is_truncated = len(novel_text) > MAX_TEXT
-        analysis_text = novel_text[:MAX_TEXT]
-
-        truncate_notice = ""
-        if is_truncated:
-            truncate_notice = (
-                "\n【注意：原文较长，以下为前 "
-                f"{MAX_TEXT} 字的节选，请覆盖所有已提供的情节内容。】\n\n"
-            )
+        # ── v13: 全文摘要 + 分块分镜，不再截断前 15000 字 ──
+        novel_summary = await _ensure_novel_summary(job)
+        novel_chunks = _split_novel_chunks(job.novel_text)
+        all_raw_scenes: list[dict] = []
 
         # ── v6.1: 题材适配引导（红果五类流量倾斜题材）──
         subject_pref = job.subject_preference or ""
@@ -6464,7 +6843,18 @@ async def generate_storyboard(job_id: str, bypass_safety: bool = False):
                     subject_guide = _GENRE_GUIDES[genre_key]
                     break
 
-        user_prompt = f"""请将以下完整小说文本改编为商业漫剧的连续分镜脚本。
+        for chunk_idx, chunk_text in enumerate(novel_chunks, 1):
+            chunk_marker = ""
+            if len(novel_chunks) > 1:
+                chunk_marker = (
+                    f"\n【当前分块：第 {chunk_idx}/{len(novel_chunks)} 段。"
+                    "只生成本块内出现的情节，不得复述全局摘要中其他分块的内容；分镜编号由系统重排。】\n\n"
+                )
+
+            user_prompt = f"""请将以下小说文本改编为商业漫剧的连续分镜脚本。
+
+## 全文章节化摘要（覆盖全文，后文也必须纳入分镜）
+{novel_summary}
 
 ## 故事结构预分析结果（你必须参考这个来分析！）
 以下是对同一文本的 Hollywood 级别故事结构分析，你的分镜设计必须与之对齐：
@@ -6477,7 +6867,7 @@ async def generate_storyboard(job_id: str, bypass_safety: bool = False):
 {_compact_environment_context(job.environment_analysis)}
 
 ## 分镜生成要求：
-1. 分镜数量：根据文本长度合理划分（每200-400字大约1个分镜，情感密集处可加密）
+1. 分镜数量：根据文本长度合理划分（每200-400字大约1个分镜，情感密集处可加密）{scene_limit_note}
 2. 必须覆盖原文的所有重要情节，不能跳过
 3. 分镜之间必须连贯，形成完整的故事弧线（参考上方预分析结果中的情绪弧线）
 4. subtitle_text 必须直接引用对应的原文文字（一字不差）
@@ -6485,58 +6875,36 @@ async def generate_storyboard(job_id: str, bypass_safety: bool = False):
 6. 如果有视觉母题（visual_motifs），必须在 visual_motif_note 中体现
 7. 每个分镜的 story_act 字段标明本镜属于第几幕（act1/act2/act3）
 8. 每个分镜的 storytelling_rhythm 字段标明节奏类型（hook/conflict/reversal/cliffhanger/emotional_peak）
-{truncate_notice}{subject_guide}
+{chunk_marker}{subject_guide}
 ## 原文开始 ##
-{analysis_text}
+{chunk_text}
 ## 原文结束 ##"""
 
-        result = await call_deepseek(
-            job.deepseek_key or DEEPSEEK_DEFAULT_KEY,
-            STORYBOARD_SYSTEM,
-            user_prompt,
-            max_tokens=16384,
-            temperature=0.7  # 分镜创意生成
-        )
+            result = await call_deepseek(
+                job.deepseek_key or DEEPSEEK_DEFAULT_KEY,
+                STORYBOARD_SYSTEM,
+                user_prompt,
+                max_tokens=16384,
+                temperature=0.7  # 分镜创意生成
+            )
+            chunk_scenes = extract_json_array(result)
+            if chunk_scenes:
+                all_raw_scenes.extend(chunk_scenes)
+            print(f"[Storyboard] 分块 {chunk_idx}/{len(novel_chunks)} 生成 {len(chunk_scenes)} 镜", flush=True)
 
-        scenes_raw = extract_json_array(result)
+        scenes_raw = all_raw_scenes
         if not scenes_raw:
             raise ValueError("分镜解析返回空结果，请检查 DeepSeek API Key 或稍后重试")
 
         all_scenes: list[Scene] = []
         for scene_id, raw in enumerate(scenes_raw, 1):
-            characters = raw.get("characters", "")
-            if isinstance(characters, list):
-                characters = "; ".join(characters) if characters else "无"
+            all_scenes.append(_parse_scene_from_raw(raw, scene_id))
 
-            subtitle_text = raw.get("subtitle_text", "")
-            subtitle_display = subtitle_text if len(subtitle_text) <= 60 else subtitle_text[:57] + "..."
+        if max_scenes > 0 and len(all_scenes) > max_scenes:
+            print(f"[Storyboard] max_scenes={max_scenes}，分镜裁剪 {len(all_scenes)} -> {max_scenes}", flush=True)
+            all_scenes = all_scenes[:max_scenes]
 
-            # 情绪强度（与故事结构预分析对齐）
-            emotional_intensity = raw.get("emotional_intensity", 5)
-            try:
-                emotional_intensity = int(emotional_intensity)
-            except (ValueError, TypeError):
-                emotional_intensity = 5
-
-            all_scenes.append(Scene(
-                id=scene_id,
-                subtitle_text=subtitle_text,
-                subtitle_display=subtitle_display,
-                title=raw.get("title", f"场景 {scene_id}"),
-                description=raw.get("description", ""),
-                characters=characters,
-                setting=raw.get("setting", ""),
-                mood=raw.get("mood", ""),
-                camera=raw.get("camera", ""),
-                duration=raw.get("duration", "5s"),
-                continuity_note=raw.get("continuity_note", ""),
-                emotional_intensity=emotional_intensity,
-                visual_motif_note=raw.get("visual_motif_note", ""),
-                story_act=raw.get("story_act", ""),
-                story_position=raw.get("story_position", ""),
-                storytelling_rhythm=raw.get("storytelling_rhythm", ""),
-            ))
-
+        await _check_story_coverage(job, all_scenes)
         job.scenes = all_scenes
         job.current_step = "storyboard"
         job.error = ""  # v9.6: 分镜生成成功时清除旧错误
@@ -6597,7 +6965,8 @@ async def update_settings(job_id: str, img_checkpoint: str = "", vid_checkpoint:
                            wan21_clip_vision: str = "clip_vision_h.safetensors",
                            use_color_grading: bool = True,
                            use_fade_transition: bool = True,
-                           use_ass_subtitles: bool = False):
+                           use_ass_subtitles: bool = False,
+                           use_env_anchor: bool = False):
     """更新生成设置（模型选择、TTS配音、质量升级等）"""
     if job_id not in jobs:
         raise HTTPException(404, "Job not found")
@@ -6639,6 +7008,7 @@ async def update_settings(job_id: str, img_checkpoint: str = "", vid_checkpoint:
     job.use_color_grading = use_color_grading
     job.use_fade_transition = use_fade_transition
     job.use_ass_subtitles = use_ass_subtitles
+    job.use_env_anchor = use_env_anchor
     await JobStorage.save(job)
     return {"status": "ok"}
 
@@ -6913,13 +7283,19 @@ async def generate_prompts(job_id: str):
         # 构建全局角色描述（确保跨场景角色一致）
         global_character_desc = _build_global_character_desc(job)
 
+        # v13: 构建角色权威视觉卡，作为跨镜一致性最高优先级
+        canonical_map = _build_canonical_character_map(job)
+        job.character_canonical = canonical_map
+
         # 逐个场景串行生成（不并发），每个场景传入前一场景的提示词作为角色外貌锚点
         async def _prompt_for_scene(scene: Scene, prev_prompt_hint: str = "") -> Scene:
             """为单个场景生成提示词（含全局角色信息和上一镜参考）"""
             # v9.9: 只提取当前场景出场角色的外貌，防止跨场景角色描述污染
             scene_character_desc = _build_scene_character_desc(job, scene)
+            canonical_card = _format_canonical_characters(canonical_map, scene)
             user_msg = f"""## 【本分镜出场角色外貌设定 —— 仅描述以下角色】
 {scene_character_desc or '无特定角色'}
+{canonical_card}
 {prev_prompt_hint}
 
 ## 【当前分镜完整信息（好莱坞级字段）】
@@ -6943,7 +7319,7 @@ async def generate_prompts(job_id: str):
 3. 【关键】不要加入其他分镜才出现的道具、动作或情节（如绳子、拉车、刨地等不属于本镜的元素）
 4. 根据 emotional_intensity 调整光线对比度和色彩饱和度（强度>7时用高对比/浓郁色彩，<4时用低对比/柔和色彩）
 5. 如果 visual_motif_note 非空，在 image_prompt 中明确体现该视觉母题
-6. 如果有上一个分镜的提示词参考，在保持本分镜独特性的同时，保证同一角色的外貌关键词完全相同
+6. 角色权威视觉卡优先于上一镜提示；上一镜提示仅用于镜头衔接，外貌关键词必须与角色权威卡逐字一致
 7. 生成竖屏（9:16）image_prompt、video_prompt 和 negative_prompt
 8. (v7.0 Seedream蒸馏) image_prompt 必须以 Danbooru 结构化标签开头: [color: XXX] [lighting: XXX] [composition: XXX],
    然后接 quality anchors + 主体描述。必须输出 vmix_tags JSON 字段"""
@@ -6993,7 +7369,8 @@ async def generate_prompts(job_id: str):
                 for qp in quality_prefixes:
                     prev_prompt = prev_prompt.replace(qp + ", ", "").replace(qp, "")
                 char_anchor = prev_prompt[:150].rstrip(",").strip()
-                prev_hint = f"\n【上一镜角色外貌锚点（必须字面保持一致）】：{char_anchor}"
+                char_anchor = char_anchor[:120].rstrip(", ").strip()
+                prev_hint = f"\n【上一镜连续性提示（仅参考镜头衔接，不得覆盖角色权威卡）】：{char_anchor}"
             await _prompt_for_scene(scene, prev_hint)
 
         job.current_step = "prompts"
@@ -7303,16 +7680,23 @@ def _auto_select_generation_config(free_vram_mb: int, job: JobState,
     if capability_mb >= 10000:
         # 空闲充裕才开 hires；空闲紧张则关 hires 但仍保 1080×1920 全分辨率
         hires = free_vram_mb < 0 or free_vram_mb >= 6000
+        quality_profile = getattr(job, "quality_profile", "") or ""
+        if quality_profile == "low":
+            hires = False
         return {
             "img_width": 1080, "img_height": 1920,
-            "hires": hires, "ipadapter": True,
+            "hires": hires, "hires_scale": 1.5,
+            "ipadapter": True,
             "checkpoint": CKPT, "checkpoint_forced": True
         }
     # ── Tier 2: 总显存 6-10GB → 896×1536 (接近竖屏比例, 可后期 upscale 到 1080) ──
     elif capability_mb >= 6000:
+        # 轻量 Hires：首轮 896×1536 构图，二轮只升到接近 1080p 的 1088×1920
+        # （宽高均为 8 的倍数）；显存紧张时关闭，由图片后处理兜底升到 1080×1920。
         return {
             "img_width": 896, "img_height": 1536,
-            "hires": False,
+            "hires": free_vram_mb < 0 or free_vram_mb >= 5000,
+            "hires_width": 1088, "hires_height": 1920,
             "ipadapter": free_vram_mb < 0 or free_vram_mb >= 3500,
             "checkpoint": CKPT, "checkpoint_forced": True
         }
@@ -7367,7 +7751,12 @@ async def _generate_scene_impl(job: JobState, scene: Scene, scene_dir: Path,
     else:
         # ComfyUI 系统状态不可达，不做自动调整
         pass
-    
+
+    # v13.2: Hires 目标分辨率按显存档位计算（低显存只做轻量二轮放大）
+    _hires_scale = config.get("hires_scale", 1.5)
+    hires_w = config.get("hires_width", 0) or (int(img_w * _hires_scale) // 8) * 8
+    hires_h = config.get("hires_height", 0) or (int(img_h * _hires_scale) // 8) * 8
+
     job_id = job.id
     char_map = {c.name: c for c in job.characters}
     
@@ -7388,6 +7777,25 @@ async def _generate_scene_impl(job: JobState, scene: Scene, scene_dir: Path,
     # （替换原仅锚定主角的逻辑，支持多角色跨镜一致；定妆照→IP-Adapter 静帧→LTX I2V 保脸）
     if job.characters:
         _pmap = JOB_PORTRAIT_MAP.setdefault(job.id, {})
+        # v12.2 持久化恢复：若当前内存 map 为空（exe 重启后），从磁盘 portrait_map.json 重建，
+        # 避免角色定妆照锚定丢失导致跨镜人物漂移。
+        if not _pmap:
+            try:
+                from pathlib import Path as _P
+                _pm_file = _P(str(scene_dir)) / "portrait_map.json"
+                if _pm_file.exists():
+                    import json as _j
+                    _stored = _j.loads(_pm_file.read_text(encoding="utf-8"))
+                    for _nm, _lp in (_stored or {}).items():
+                        if _lp and _P(_lp).exists():
+                            try:
+                                _pmap[_nm] = await comfyui.upload_image(_lp)
+                            except Exception as _upe:
+                                print(f"[IP-Adapter] 恢复 {_nm} 定妆照上传失败: {_upe}", flush=True)
+                    if _pmap:
+                        print(f"[IP-Adapter] 已从磁盘恢复定妆照映射: {list(_pmap.keys())}", flush=True)
+            except Exception as _e:
+                print(f"[IP-Adapter] 定妆照映射恢复失败: {_e}", flush=True)
         for _c in job.characters:
             if _c.name in _pmap or not getattr(_c, 'kling_prompt', ''):
                 continue
@@ -7396,6 +7804,20 @@ async def _generate_scene_impl(job: JobState, scene: Scene, scene_dir: Path,
             if _pp:
                 try:
                     _pmap[_c.name] = await comfyui.upload_image(_pp)
+                    # v12.2 持久化修复：把"角色名 → 定妆照本地路径"写盘，
+                    # 供 exe 重启后从磁盘重建 JOB_PORTRAIT_MAP（避免 restart 丢锚定导致角色跨镜漂移）
+                    try:
+                        from pathlib import Path as _P
+                        _jdir = _P(str(scene_dir))
+                        _pm = _jdir / "portrait_map.json"
+                        _cur = {}
+                        if _pm.exists():
+                            import json as _j
+                            _cur = _j.loads(_pm.read_text(encoding="utf-8"))
+                        _cur[_c.name] = str(_pp)
+                        _pm.write_text(_j.dumps(_cur, ensure_ascii=False, indent=2), encoding="utf-8")
+                    except Exception as _pe:
+                        print(f"[IP-Adapter] 定妆照映射持久化失败: {_pe}", flush=True)
                 except Exception as e:
                     print(f"[IP-Adapter] {_c.name} 上传失败: {e}", flush=True)
         if _pmap:
@@ -7527,36 +7949,40 @@ async def _generate_scene_impl(job: JobState, scene: Scene, scene_dir: Path,
             else:
                 uploaded_ref = pulid_ref_path  # 可能已经是 ComfyUI input 目录中的文件名
 
-            wf_template = load_workflow("txt2img_sdxl_pulid")
+            wf_template = load_workflow("txt2img_pulid_hires" if config.get("hires", True) else "txt2img_pulid")
             replacements = {
                 "POSITIVE_PROMPT": positive_prompt,
                 "NEGATIVE_PROMPT": negative_prompt,
                 "SEED": scene_seed,
                 "WIDTH": img_w,
                 "HEIGHT": img_h,
-                "HIRES_WIDTH": (int(img_w * 1.5) // 8) * 8,     # v9.7: VAE 要求宽高 8 的倍数
-                "HIRES_HEIGHT": (int(img_h * 1.5) // 8) * 8,
+                "HIRES_WIDTH": hires_w,
+                "HIRES_HEIGHT": hires_h,
                 "CHECKPOINT": job.img_checkpoint,
                 "PULID_MODEL": job.pulid_model,
                 "REFERENCE_IMAGE": uploaded_ref,
             }
         elif job.use_ipadapter and job.ipadapter_reference_image:
             # v7.1: reference_image 是 ComfyUI 上传文件名, 不是本地路径
-            wf_template = load_workflow("txt2img_ipadapter")
+            try:
+                wf_template = load_workflow("txt2img_ipadapter_hires" if config.get("hires", True) else "txt2img_ipadapter")
+            except FileNotFoundError:
+                print("[WARN] txt2img_ipadapter 模板不存在，回退到基础/hires 模板", flush=True)
+                wf_template = load_workflow("txt2img_hires") if config.get("hires", True) else load_workflow("txt2img")
             replacements = {
                 "POSITIVE_PROMPT": positive_prompt,
                 "NEGATIVE_PROMPT": negative_prompt,
                 "SEED": scene_seed,
                 "WIDTH": img_w,
                 "HEIGHT": img_h,
-                "HIRES_WIDTH": (int(img_w * 1.5) // 8) * 8,
-                "HIRES_HEIGHT": (int(img_h * 1.5) // 8) * 8,
+                "HIRES_WIDTH": hires_w,
+                "HIRES_HEIGHT": hires_h,
                 "CHECKPOINT": job.img_checkpoint,
                 "IPADAPTER_MODEL": job.ipadapter_model,
                 "CLIP_VISION_MODEL": job.clip_vision_model,
                 "REFERENCE_IMAGE": job.ipadapter_reference_image,
             }
-        elif job.use_hires_fix:
+        elif job.use_hires_fix and config.get("hires", True):
             wf_template = load_workflow("txt2img_hires")
             replacements = {
                 "POSITIVE_PROMPT": positive_prompt,
@@ -7564,8 +7990,8 @@ async def _generate_scene_impl(job: JobState, scene: Scene, scene_dir: Path,
                 "SEED": scene_seed,
                 "WIDTH": img_w,
                 "HEIGHT": img_h,
-                "HIRES_WIDTH": (int(img_w * 1.5) // 8) * 8,
-                "HIRES_HEIGHT": (int(img_h * 1.5) // 8) * 8,
+                "HIRES_WIDTH": hires_w,
+                "HIRES_HEIGHT": hires_h,
                 "CHECKPOINT": job.img_checkpoint,
             }
         else:
@@ -7581,15 +8007,42 @@ async def _generate_scene_impl(job: JobState, scene: Scene, scene_dir: Path,
 
         img_workflow = fill_workflow(wf_template, replacements)
 
+        # v13.1: 环境参考图锚定 —— 上传匹配到的环境图，采样时作为 img2img 低 denoise 底图
+        env_anchor_uploaded = ""
+        if getattr(job, "use_env_anchor", False):
+            env_anchor_path = ""
+            env_match = _get_scene_environment(scene, job)
+            if env_match:
+                env_name = (env_match.get("name", "") or "").strip()
+                env_anchor_path = (job.environment_images or {}).get(env_name, "")
+            if env_anchor_path and Path(env_anchor_path).exists():
+                try:
+                    env_anchor_uploaded = await comfyui.upload_image(env_anchor_path)
+                    print(f"[EnvAnchor] 场景 {scene.id} 环境参考图: {env_name}", flush=True)
+                except Exception as e:
+                    print(f"[EnvAnchor] 环境图上传失败(不阻塞): {str(e)[:100]}", flush=True)
+            else:
+                print(f"[EnvAnchor] 场景 {scene.id} 未匹配环境参考图，仅文字级环境控制", flush=True)
+
         # ── v6.2: 多维度图像质量评分系统 ──
         # 生成多个不同seed的图像，使用多维度评分选择最佳版本
         best_image_path = None
         best_score = -1.0
-        max_samples = 2 if job.use_pulid and job.pulid_reference_image else 3  # PuLID模式用2版节省时间
+        quality_profile = getattr(job, "quality_profile", "") or ""
+        if quality_profile == "low":
+            max_samples = 1
+        elif quality_profile == "balanced":
+            max_samples = 2
+        elif quality_profile == "high":
+            max_samples = 3
+        else:
+            max_samples = 2 if job.use_pulid and job.pulid_reference_image else 3  # PuLID模式用2版节省时间
         for sample_i in range(max_samples):
             sample_seed = scene_seed + sample_i * 777  # 不同seed间距
             replacements["SEED"] = sample_seed
             sample_workflow = fill_workflow(wf_template, replacements)
+            if env_anchor_uploaded:
+                sample_workflow = _apply_env_anchor_to_workflow(sample_workflow, env_anchor_uploaded, denoise=0.62)
         
             print(f"[Sampling] 场景 {scene.id} 第{sample_i+1}/{max_samples}版 (seed={sample_seed})", flush=True)
             prompt_id = await comfyui.submit_workflow(sample_workflow)
@@ -7632,6 +8085,9 @@ async def _generate_scene_impl(job: JobState, scene: Scene, scene_dir: Path,
         local_img = best_image_path
         scene.image_path = local_img
         print(f"[Sampling] 场景 {scene.id} 最终选择: {Path(best_image_path).stat().st_size/1024:.0f}KB, 质量分={best_score:.2f}", flush=True)
+        # v13.2: 统一输出 1080×1920（Hires 开启时接近无损，关闭时 LANCZOS 兜底）
+        local_img = _normalize_image_to_1080p(local_img)
+        scene.image_path = local_img
 
         # v12.0: 图片生成成功后自动构建角色素材库
         try:
@@ -7656,11 +8112,12 @@ async def _generate_scene_impl(job: JobState, scene: Scene, scene_dir: Path,
                         end_subfolder = end_info.get("subfolder", "")
                         end_path = await comfyui.download_output(end_info["filename"], end_subfolder, save_dir=scene_dir)
                         if end_path and Path(end_path).exists():
-                            end_img = end_path
+                            end_img = _normalize_image_to_1080p(end_path)
                             print(f"[DualFrame] 场景 {scene.id}: 尾帧已生成 ({Path(end_path).stat().st_size/1024:.0f}KB)", flush=True)
                         break
             except Exception as e:
                 print(f"[DualFrame] 场景 {scene.id}: 尾帧生成失败 ({str(e)[:80]}), 回退到单帧", flush=True)
+        scene.end_image_path = end_img if end_img else None
     
     scene.status = "generating_vid"
     
@@ -7744,7 +8201,25 @@ async def _generate_scene_impl(job: JobState, scene: Scene, scene_dir: Path,
         "scene_frames": scene_frames,
         "merge_videos_func": merge_videos,
     }
-    current_vid = await video_engine.dispatch(scene, scene_dir, vid_ctx)
+    # v13: 文戏锁定首帧构图与角色身份，动作戏保留运镜自由度
+    preserve_first_frame = bool(getattr(job, "video_preserve_first_frame", True))
+    _cam_text = scene.camera or ""
+    _desc_text = scene.description or ""
+    is_action = any(kw in _cam_text for kw in ['跟随', '快速', '切换', '甩', '晃']) or \
+                any(kw in _desc_text for kw in ['跑', '冲', '追', '打', '摔', '爆炸', '撞', '飞'])
+    vid_ctx["preserve_first_frame"] = preserve_first_frame and not is_action
+
+    # ── P6: 新引擎优先（工业引擎 + 质量门），失败自动回退旧引擎 ──
+    current_vid = None
+    try:
+        from industrial_bridge import generate_scene_video as _ind_gen
+        current_vid = await _ind_gen(job, scene, scene_dir, vid_base_prompt, local_img)
+    except Exception as e:
+        print(f"[Industrial] 桥接调用异常({str(e)[:120]})，回退旧引擎", flush=True)
+        current_vid = None
+
+    if not current_vid:
+        current_vid = await video_engine.dispatch(scene, scene_dir, vid_ctx)
     if current_vid:
         scene.video_path = current_vid
     else:
@@ -9019,8 +9494,21 @@ async def _run_generation_impl(job: JobState, scene_dir: Path,
     if not pending_scenes:
         return
     
-    # v6.0: 3路并发控制
-    max_concurrent = 3
+    # v13: 按显存自适应并发（低显存自动降级，避免 OOM）
+    free_vram = -1
+    if getattr(job, "max_concurrency", 0) > 0:
+        max_concurrent = job.max_concurrency
+    else:
+        free_vram, _ = await _get_comfyui_vram_info()
+        if free_vram < 0:
+            max_concurrent = 2
+        elif free_vram < 6000:
+            max_concurrent = 1
+        elif free_vram <= 10000:
+            max_concurrent = 2
+        else:
+            max_concurrent = 3
+    print(f"[VRAM] 并发数: {max_concurrent}（空闲显存 {free_vram}MB）", flush=True)
     semaphore = asyncio.Semaphore(max_concurrent)
     active_count = 0  # v8.7.1: 替代 semaphore._value 私有属性访问
     completed_count = 0
@@ -10073,6 +10561,12 @@ async def api_generate(req: GenerateRequest):
         use_manga_fx=getattr(req, 'use_manga_fx', True),
         use_multi_shot=getattr(req, 'use_multi_shot', False),
         video_mode=getattr(req, 'video_mode', 'local'),
+        subject_preference=getattr(req, 'subject_preference', ""),
+        quality_profile=getattr(req, 'quality_profile', ""),
+        max_concurrency=getattr(req, 'max_concurrency', 0),
+        max_scenes=getattr(req, 'max_scenes', 0),
+        video_preserve_first_frame=getattr(req, 'video_preserve_first_frame', True),
+        use_env_anchor=getattr(req, 'use_env_anchor', False),
         current_step="storyboard",
     )
     jobs[job_id] = job
@@ -10118,8 +10612,13 @@ async def run_existing_pipeline(job_id: str):
     job = jobs[job_id]
     if not job.scenes:
         raise HTTPException(400, "请先生成分镜 (POST /api/generate-storyboard)")
-    if job.current_step in ("generating_img", "generating_video", "done"):
+    # 容错：即使 current_step 卡在生成态，若后台任务确已全部结束（如 exe 重启/CancelledError
+    # 泄漏的状态），允许重置并重新拉起管线，避免"假运行中"永久阻塞。
+    if job.current_step in ("generating_img", "generating_video", "done") and _background_tasks:
         raise HTTPException(400, f"管线已在运行中 (当前阶段: {job.current_step})")
+    if job.current_step in ("generating_img", "generating_video", "done") and not _background_tasks:
+        # 状态泄漏但无真实任务 → 允许重启
+        job.current_step = "pending"
     
     job.current_step = "generating_img"
     job.error = ""  # v9.6: 清除旧错误，防止 status API 误判为 error
@@ -10145,8 +10644,11 @@ async def regenerate_images_only(job_id: str):
     job = jobs[job_id]
     if not job.scenes:
         raise HTTPException(400, "请先生成分镜 (POST /api/generate-storyboard)")
-    if job.current_step in ("generating_img", "generating_video"):
+    # 容错：后台任务已全部结束但 current_step 卡在生成态（状态泄漏）→ 允许重启
+    if job.current_step in ("generating_img", "generating_video") and _background_tasks:
         raise HTTPException(400, f"管线已在运行中 (当前阶段: {job.current_step})")
+    if job.current_step in ("generating_img", "generating_video") and not _background_tasks:
+        job.current_step = "pending"
 
     # 检查是否所有场景都有 image_prompt
     missing = [s.id for s in job.scenes if not s.image_prompt]
@@ -10349,32 +10851,14 @@ async def _run_generate_pipeline(job_id: str):
         if not llm_key and not _prefilled:
             raise ValueError("DeepSeek API Key 未设置")
         
-        # 完整原文送入（v9.5: 上限 15000 字，避免超出 DeepSeek 64K 上下文）
-        MAX_TEXT = 15000
-        novel_text = job.novel_text
-        is_truncated = len(novel_text) > MAX_TEXT
-        analysis_text = novel_text[:MAX_TEXT]
-        truncate_notice = f"\n\n【注意：原文较长，以下为前 {MAX_TEXT} 字节选，请覆盖所有已提供情节内容。】\n\n" if is_truncated else ""
-
-        storyboard_user_prompt = f"""请将以下完整小说文本改编为商业漫剧的连续分镜脚本。
-
-## 故事结构预分析结果（分镜设计必须与之对齐）
-        {json.dumps(job.story_structure, ensure_ascii=False, indent=2) if job.story_structure else "（无预分析结果）"}
-
-## 角色预分析档案（v9.5：精简压缩，跨镜角色一致性强制参考！！！）
-        {_compact_character_context(job.character_analysis)}
-
-## 环境预分析档案（v9.5：精简压缩，跨镜场景一致性强制参考！！！）
-        {_compact_environment_context(job.environment_analysis)}
-
-要求：
-1. 分镜数量：根据文本长度合理划分（每300-500字大约1个分镜）
-2. 必须覆盖原文的所有重要情节，不能跳过任何情节
-3. 分镜之间必须连贯，形成完整的故事弧线
-4. subtitle_text 必须直接引用对应的原文文字{truncate_notice}
-## 原文开始 ##
-{analysis_text}
-## 原文结束 ##"""
+        # v13: 全文摘要 + 分块分镜，避免长文被截断导致后文丢失
+        novel_chunks = _split_novel_chunks(job.novel_text)
+        all_raw_scenes: list[dict] = []
+        max_scenes = int(getattr(job, "max_scenes", 0) or 0)
+        scene_limit_note = (
+            f"\n【测试模式】分镜总数最多 {max_scenes} 个，优先保留开篇冲突、关键反转和结尾钩子。"
+            if max_scenes > 0 else ""
+        )
 
         if _prefilled:
             # 离线模式：场景已预填 prompts，直接复用，避免调用 DeepSeek
@@ -10399,46 +10883,85 @@ async def _run_generate_pipeline(job_id: str):
             } for s in job.scenes]
             print(f"[Pipeline] 离线重建分镜（{len(storyboard)} 镜，沿用预填 prompts，跳过 DeepSeek）", flush=True)
         else:
-            result = await call_deepseek(llm_key, STORYBOARD_SYSTEM,
-                storyboard_user_prompt,
-                max_tokens=16384,
-                temperature=0.7)  # 分镜创意生成
-            storyboard = extract_json_array(result)
-        
+            novel_summary = await _ensure_novel_summary(job, llm_key)
+            # v13: 题材适配引导（与分步接口保持一致）
+            subject_pref = getattr(job, "subject_preference", "") or ""
+            subject_guide = ""
+            _GENRE_GUIDES = {
+                "言情": "\n\n## 【题材专项：言情/恋爱】\n- 重点刻画情感细节：眼神交流、微表情、肢体暧昧、距离变化\n- 多用特写+近景，强调面部微表情\n- 光线：柔和的暖光（夕阳/烛光/月光），高光柔化\n- 色调：粉/橘/暖金色调为主，辅助冷色对比\n- 节奏：情感推进时加快，甜蜜场景放慢\n- 关键词：romantic, intimate, tender touch, longing gaze, soft light, emotional connection\n",
+                "古风玄幻": "\n\n## 【题材专项：古风玄幻/仙侠】\n- 重点刻画仙侠意境：云雾缭绕、御剑飞行、灵力光效、古建筑\n- 多用中景+远景建立世界观，全景展示战斗\n- 光线：灵力发光/月华/剑气光效作为重点光源\n- 色调：青/紫/金色灵力光效，场景偏冷色调\n- 节奏：战斗场面3s快切，修行场景5-8s慢推\n- 关键词：ancient chinese fantasy, flowing robes, spiritual energy glow, misty mountains, sword flight, celestial realm\n",
+                "都市轻悬疑": "\n\n## 【题材专项：都市轻悬疑】\n- 重点刻画悬疑气氛：阴影细节、不自然的光影、关键道具特写、角色可疑表情\n- 多用特写+近景捕捉细节线索，穿插广角变形营造不安感\n- 光线：高对比度（亮处极亮/暗处极暗），窗户投影制造不安\n- 色调：冷灰/蓝绿为主，局部暖色暗示线索\n- 节奏：揭示线索时代入紧张短镜头(2-3s)，推理时代入慢推\n- 关键词：urban mystery, noir lighting, shadow play, suspicious glance, clue close-up, tense atmosphere\n",
+                "现代甜宠": "\n\n## 【题材专项：现代甜宠/霸总】\n- 重点刻画甜蜜互动：牵手/壁咚/公主抱/额头轻吻等浪漫动作\n- 多用中景+近景展示互动，辅以浅景深虚化背景\n- 光线：柔和暖光（室内暖灯/午后阳光），高光柔化制造梦幻感\n- 色调：温暖奶油色/蜜桃色为主，配合浅粉/白色\n- 节奏：甜蜜场景放慢(5-8s)，冲突场景加快\n- 关键词：modern romance, sweet interaction, luxury setting, soft focus, warm lighting, tender moment, wealthy lifestyle\n",
+                "奇幻冒险": "\n\n## 【题材专项：奇幻冒险】\n- 重点刻画世界观奇观：魔法特效、异世界建筑、奇幻生物、战斗场面\n- 多用远景展示世界规模+特写展示魔法细节\n- 光线：多光源（魔法发光/异色太阳/元素光效）\n- 色调：高饱和、色彩丰富但不刺眼，不同区域不同色调\n- 节奏：战斗2-3s快切，探索5-8s横摇\n- 关键词：fantasy adventure, magical effects, epic scale, vibrant colors, otherworldly landscape, action-packed\n",
+            }
+            if subject_pref in _GENRE_GUIDES:
+                subject_guide = _GENRE_GUIDES[subject_pref]
+            elif job.story_structure:
+                genre_hints = job.story_structure.get("genre_hints", "")
+                for genre_key in ["言情", "古风玄幻", "都市轻悬疑", "现代甜宠", "奇幻冒险"]:
+                    if genre_key in str(genre_hints) or genre_key in getattr(job, "novel_title", ""):
+                        subject_guide = _GENRE_GUIDES[genre_key]
+                        break
+            for chunk_idx, chunk_text in enumerate(novel_chunks, 1):
+                chunk_marker = ""
+                if len(novel_chunks) > 1:
+                    chunk_marker = (
+                        f"\n【当前分块：第 {chunk_idx}/{len(novel_chunks)} 段。"
+                        "只生成本块内出现的情节，不得复述全局摘要中其他分块的内容；分镜编号由系统重排。】\n\n"
+                    )
+                storyboard_user_prompt = f"""请将以下完整小说文本改编为商业漫剧的连续分镜脚本。
+
+## 全文章节化摘要（覆盖全文，后文也必须纳入分镜）
+{novel_summary}
+
+## 故事结构预分析结果（分镜设计必须与之对齐）
+        {json.dumps(job.story_structure, ensure_ascii=False, indent=2) if job.story_structure else "（无预分析结果）"}
+
+## 角色预分析档案（v9.5：精简压缩，跨镜角色一致性强制参考！！！）
+        {_compact_character_context(job.character_analysis)}
+
+## 环境预分析档案（v9.5：精简压缩，跨镜场景一致性强制参考！！！）
+        {_compact_environment_context(job.environment_analysis)}
+
+要求：
+1. 分镜数量：根据文本长度合理划分（每300-500字大约1个分镜）{scene_limit_note}
+2. 必须覆盖原文的所有重要情节，不能跳过任何情节
+3. 分镜之间必须连贯，形成完整的故事弧线
+4. subtitle_text 必须直接引用对应的原文文字
+{subject_guide}
+{chunk_marker}
+## 原文开始 ##
+{chunk_text}
+## 原文结束 ##"""
+                result = await call_deepseek(
+                    llm_key,
+                    STORYBOARD_SYSTEM,
+                    storyboard_user_prompt,
+                    max_tokens=16384,
+                    temperature=0.7
+                )
+                chunk_scenes = extract_json_array(result)
+                if chunk_scenes:
+                    all_raw_scenes.extend(chunk_scenes)
+                print(f"[Pipeline] 分块 {chunk_idx}/{len(novel_chunks)} 生成 {len(chunk_scenes)} 镜", flush=True)
+            storyboard = all_raw_scenes
+
         if not storyboard:
             raise ValueError("分镜分析返回空结果")
-        
+
         job.scenes = []
         for i, sb in enumerate(storyboard, 1):
-            characters = sb.get("characters", "")
-            if isinstance(characters, list):
-                characters = "; ".join(characters) if characters else "无"
-            subtitle_text = sb.get("subtitle_text", sb.get("narration", ""))
-            subtitle_display = subtitle_text[:57] + "..." if len(subtitle_text) > 60 else subtitle_text
-            scene = Scene(
-                id=i,
-                title=sb.get("title", f"场景{i}"),
-                description=sb.get("description", sb.get("setting", "")),
-                subtitle_text=subtitle_text,
-                subtitle_display=subtitle_display,
-                characters=characters,
-                setting=sb.get("setting", ""),
-                mood=sb.get("mood", ""),
-                camera=sb.get("camera", ""),
-                image_prompt=sb.get("image_prompt", ""),
-                video_prompt=sb.get("video_prompt", ""),
-                negative_prompt=sb.get("negative_prompt", ""),
-                continuity_note=sb.get("continuity_note", ""),
-                emotional_intensity=int(float(sb.get("emotional_intensity", 5))),
-                visual_motif_note=sb.get("visual_motif_note", ""),
-                story_act=sb.get("story_act", ""),
-                story_position=sb.get("story_position", ""),
-                storytelling_rhythm=sb.get("storytelling_rhythm", ""),
-                duration=sb.get("duration", "5s"),
-                shot_size=sb.get("shot_size", ""),
-                status="pending"
-            )
+            scene = _parse_scene_from_raw(sb, i)
+            scene.image_prompt = sb.get("image_prompt", "")
+            scene.video_prompt = sb.get("video_prompt", "")
+            scene.negative_prompt = sb.get("negative_prompt", "")
             job.scenes.append(scene)
+
+        if max_scenes > 0 and len(job.scenes) > max_scenes:
+            print(f"[Pipeline] max_scenes={max_scenes}，分镜裁剪 {len(job.scenes)} -> {max_scenes}", flush=True)
+            job.scenes = job.scenes[:max_scenes]
+
+        await _check_story_coverage(job, job.scenes)
 
         # P0-③: 多样化运镜调度（强制相邻场景景别不重复）
         try:
@@ -10581,6 +11104,9 @@ async def _run_generate_pipeline(job_id: str):
                     # 构建全局角色外貌表（确保跨场景角色一致性）
                     # 关键修复：提取角色在分镜中出现的外貌描述，统一固定下来
                     global_character_desc = _build_global_character_desc(job)
+                    # v13: 角色权威视觉卡，跨镜一致性最高优先级
+                    canonical_map = _build_canonical_character_map(job)
+                    job.character_canonical = canonical_map
                     
                     # 逐个场景生成（不并发，保证前后连贯性）
                     for idx, scene in enumerate(job.scenes):
@@ -10593,13 +11119,15 @@ async def _run_generate_pipeline(job_id: str):
                                 prev_pmt = prev_scene.image_prompt
                                 for qp in ["masterpiece, best quality", "ultra detailed", "8k uhd", "sharp focus"]:
                                     prev_pmt = prev_pmt.replace(qp + ", ", "").replace(qp, "")
-                                char_anchor = prev_pmt[:150].rstrip(",").strip()
-                                prev_prompt_hint = f"\n【上一镜角色外貌锚点（必须字面保持一致）】：{char_anchor}"
+                                char_anchor = prev_pmt[:120].rstrip(", ").strip()
+                                prev_prompt_hint = f"\n【上一镜连续性提示（仅参考镜头衔接，不得覆盖角色权威卡）】：{char_anchor}"
                             
                             # v9.9: 只为当前场景提取出场角色外貌
                             scene_char = _build_scene_character_desc(job, scene)
+                            canonical_card = _format_canonical_characters(canonical_map, scene)
                             user_msg = f"""## 【本分镜出场角色外貌设定 —— 仅描述以下角色】
 {scene_char if scene_char else "（无特定角色）"}
+{canonical_card}
 {prev_prompt_hint}
 
 ## 【当前分镜完整信息】
@@ -10618,10 +11146,11 @@ async def _run_generate_pipeline(job_id: str):
 故事位置：{scene.story_position or "未标注"}
 
 ## 【生成要求】
-1. image_prompt 的角色外貌描述词必须与上方"全局角色外貌设定"完全一致（发色/发型/眼睛/服装等关键词必须字面相同）
+1. image_prompt 的角色外貌描述词必须与上方"本分镜出场角色外貌设定"及"角色权威视觉卡"完全一致（发色/发型/眼睛/服装等关键词必须字面相同）
 2. 场景/背景描述必须来自本分镜的"场景环境"和"画面描述"，绝对不能使用通用背景
 3. 如果本镜没有人物，专注描述场景环境
-4. 生成竖屏 9:16 的 image_prompt、video_prompt 和 negative_prompt"""
+4. 生成竖屏 9:16 的 image_prompt、video_prompt 和 negative_prompt
+5. 角色权威视觉卡优先于上一镜提示；外貌关键词必须与角色权威卡逐字一致"""
 
                             result = await call_deepseek(
                                 llm_key,
@@ -11204,14 +11733,28 @@ async def startup_check():
             issues.append("[WARN] DEEPSEEK_API_KEY 未设置 - LLM 功能（分镜/角色分析）将不可用")
         
         # 检查 ComfyUI 连接
+        comfyui_system = None
         try:
             async with httpx.AsyncClient(timeout=5) as c:
                 resp = await c.get(f"{COMFYUI_URL}/system_stats")
                 if resp.status_code == 200:
+                    comfyui_system = resp.json()
                     print("[Startup] [OK] ComfyUI 已连接", flush=True)
         except Exception:
             issues.append(f"[WARN] ComfyUI 未响应 ({COMFYUI_URL}) - 图片/视频生成将不可用")
         
+        # 自动探测模型目录：优先环境变量，其次从 ComfyUI argv[0] 推断
+        global COMFYUI_MODELS_DIR
+        if not COMFYUI_MODELS_DIR.exists() and comfyui_system:
+            try:
+                argv0 = Path(comfyui_system["system"]["argv"][0])
+                detected = argv0.resolve().parent / "models"
+                if detected.exists():
+                    print(f"[Startup] 自动定位 ComfyUI models: {detected}", flush=True)
+                    COMFYUI_MODELS_DIR = detected
+            except Exception as e:
+                print(f"[Startup] 模型目录自动探测失败: {e}", flush=True)
+
         # 检查模型目录
         if COMFYUI_MODELS_DIR.exists():
             ckpt_dir = COMFYUI_MODELS_DIR / "checkpoints"
@@ -11244,9 +11787,23 @@ async def startup_check():
 
 # ─── 静态文件 ──────────────────────────────────────────────
 class NoCacheStaticFiles(StaticFiles):
-    """禁止浏览器缓存的静态文件服务"""
+    """禁止浏览器缓存的静态文件服务 + SPA 路由 fallback。
+
+    FastAPI StaticFiles(html=True) 只对"恰好是磁盘文件"的请求返回该文件；
+    对 /tasks、/storyboard/xxx 这类浏览器直接访问的前端路由（磁盘无此文件）
+    会抛 HTTPException(404)。这里捕获并回退到 index.html，
+    保证 React BrowserRouter 刷新/直接访问不打白屏或显示 404 JSON。
+    """
     async def get_response(self, path: str, scope):
-        response = await super().get_response(path, scope)
+        # path 形如 "tasks"（无前导斜杠）。后端 API/WS 由更早的路由处理，不会走到这里。
+        try:
+            response = await super().get_response(path, scope)
+            # StaticFiles(html=True) 对不存在的磁盘路径也可能直接返回 404 response（而非抛异常）
+            if response.status_code == 404 and not path.startswith("assets/"):
+                response = await super().get_response("index.html", scope)
+        except Exception:
+            # 磁盘无此文件（抛异常）→ 回退到 SPA 入口 index.html
+            response = await super().get_response("index.html", scope)
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"

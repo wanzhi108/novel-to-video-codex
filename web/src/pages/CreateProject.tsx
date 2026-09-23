@@ -65,6 +65,7 @@ export function CreateProject() {
       use_pulid: settings.usePulid,
       kling_api_key: settings.klingApiKey,
       use_wan21: settings.useWan21,
+      use_env_anchor: settings.useEnvAnchor,
       use_color_grading: settings.useColorGrading,
       use_fade_transition: settings.useFadeTransition,
       style: settings.style,
@@ -308,6 +309,24 @@ export function CreateProject() {
                 </label>
               </div>
             </div>
+
+            {/* Scene consistency */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-ink-300 block">
+                场景一致性
+              </label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={settings.useEnvAnchor}
+                    onChange={(e) => settings.update({ useEnvAnchor: e.target.checked })}
+                    className="rounded"
+                  />
+                  环境参考图固定
+                </label>
+              </div>
+            </div>
           </div>
         )}
 
@@ -452,6 +471,10 @@ export function CreateProject() {
                 ]
                   .filter(Boolean)
                   .join(" + ") || "无"}
+              />
+              <SummaryRow
+                label="场景一致性"
+                value={settings.useEnvAnchor ? "环境参考图固定" : "文字级环境控制"}
               />
               <SummaryRow
                 label="TTS 配音"

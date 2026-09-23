@@ -287,6 +287,7 @@ export function Settings() {
             <option value="local">本地 (LTX/ComfyUI)</option>
             <option value="cloud_t2v">云端文生视频</option>
             <option value="ltx_t2v">LTX 文生视频</option>
+            <option value="wan_i2v">Wan 2.2 I2V (稳定管线)</option>
           </select>
         </div>
         <div className="grid grid-cols-2 gap-3">

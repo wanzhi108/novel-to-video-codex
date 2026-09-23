@@ -90,3 +90,12 @@ resources/*.ico
 story2/refs/
 cosyvoice2/cn_refs/*.wav
 output/
+
+# ── 本次安全清理：不入库的个人/环境信息与第三方插件 ──
+_plugins/
+.dsh-project-memory/
+.dsh-memory/
+.research/
+comfyui/hist_*.json
+comfyui/obj_info_raw.json
+*.part??.zip

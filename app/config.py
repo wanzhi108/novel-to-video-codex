@@ -12,6 +12,8 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 COMFYUI_URL = os.environ.get("COMFYUI_URL", "http://127.0.0.1:8188")
 # v9.6: 智能检测 ComfyUI models 目录，优先级: 环境变量 > 仓库内默认值
 _default_models = os.environ.get("COMFYUI_MODELS_DIR", "")
+if not _default_models and os.environ.get("COMFYUI_PATH"):
+    _default_models = str(Path(os.environ["COMFYUI_PATH"]) / "models")
 if not _default_models:
     _default_models = str(Path(__file__).parent.parent / "ComfyUI" / "models")
 COMFYUI_MODELS_DIR = Path(_default_models)

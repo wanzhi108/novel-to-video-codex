@@ -163,6 +163,18 @@ class JobState(BaseModel):
     # v6.2: 角色与环境预分析（在分镜生成前提取，确保跨镜一致性）
     character_analysis: Optional[dict] = None   # {characters: [{name, role, gender, age_appearance, physical_description, face_detail, hair_style, clothing_evolution, personality_traits, typical_expression, special_marks, relationships, importance_level}]}
     environment_analysis: Optional[dict] = None  # {environments: [{name, location_type, description, time_period, lighting, color_scheme, atmosphere, key_props, scale}]}
+    environment_images: dict = {}    # 环境名 -> 预生成环境参考图路径
+    prop_images: dict = {}           # 道具名 -> 预生成道具特写图路径
+
+    # v13: 长文本覆盖与角色一致性改进
+    novel_summary: str = ""          # 全文章节化摘要，长文分镜的覆盖依据
+    story_coverage: dict = {}        # 分镜覆盖校验结果 {checked, covered, missing, ratio}
+    character_canonical: dict = {}   # 角色名 -> 稳定英文视觉卡（跨镜逐字复用）
+    quality_profile: str = ""        # low/balanced/high，空字符串=按显存自动
+    max_concurrency: int = 0         # 0=按显存自动；低显存时自动降为 1-2
+    max_scenes: int = 0              # 0=按文本长度自动；>0 时裁剪分镜总数（小故事/冒烟测试用）
+    video_preserve_first_frame: bool = True  # 文戏忠于首帧，动作戏才允许大位移
+    use_env_anchor: bool = False  # v13.1: 环境参考图 img2img 锚定（低 denoise 保持场景/道具固定）
 
     # 输出路径
     merged_video_path: str = ""  # 最终合成视频路径
@@ -195,3 +207,9 @@ class GenerateRequest(BaseModel):
     video_mode: str = "local"  # "local" | "cloud_t2v" | "ltx_t2v" | "ltx_t2v"
     tts_enabled: bool = True
     smart_dubbing: bool = True
+    subject_preference: str = ""
+    quality_profile: str = ""
+    max_concurrency: int = 0
+    max_scenes: int = 0
+    video_preserve_first_frame: bool = True
+    use_env_anchor: bool = False

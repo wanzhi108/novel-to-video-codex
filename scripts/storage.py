@@ -160,19 +160,24 @@ class Storage:
             await asyncio.to_thread(_del)
 
     async def list_jobs(self) -> list[dict]:
-        """返回任务列表摘要（不加载完整数据，快速查询）"""
+        """返回任务列表摘要（不加载完整数据，快速查询）。
+
+        输出字段与前端 web/src/lib/types.ts 的 JobSummary 对齐：
+        id / title / status / scene_count / completed_scenes / created_at。
+        current_step 映射为 status；novel_title 映射为 title。
+        """
         def _list():
             rows = self._conn.execute(
                 """SELECT job_id, novel_title, current_step, scenes_count, done_count, updated_at
                    FROM jobs ORDER BY updated_at DESC"""
             ).fetchall()
             return [{
-                "job_id": r["job_id"],
-                "novel_title": r["novel_title"] or "Untitled",
-                "current_step": r["current_step"] or "upload",
-                "scenes_count": r["scenes_count"] or 0,
-                "done_count": r["done_count"] or 0,
-                "modified": r["updated_at"] or 0,
+                "id": r["job_id"],
+                "title": r["novel_title"] or "Untitled",
+                "status": r["current_step"] or "upload",
+                "scene_count": r["scenes_count"] or 0,
+                "completed_scenes": r["done_count"] or 0,
+                "created_at": r["updated_at"] or 0,
             } for r in rows]
         return await asyncio.to_thread(_list)
 

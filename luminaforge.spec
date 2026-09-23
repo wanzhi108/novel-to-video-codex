@@ -8,8 +8,8 @@ from pathlib import Path
 project_dir = Path(".").resolve()
 
 a = Analysis(
-    ['launcher.py'],
-    pathex=[str(project_dir)],
+    ['scripts/launcher.py'],
+    pathex=[str(project_dir), str(project_dir / "scripts")],
     binaries=[],
     datas=[
         # Web 前端 (v12.0 React 构建产物，优先于 static/)
@@ -20,6 +20,12 @@ a = Analysis(
         ('comfyui', 'comfyui'),
         # 后端脚本（包含 cloud_video.py 等运行时模块）
         ('scripts', 'scripts'),
+        # P6: 工业引擎与质量门模块
+        ('engines', 'engines'),
+        ('quality', 'quality'),
+        ('config', 'config'),
+        # 默认配置模板（exe 旁放 settings.yaml 可覆盖）
+        ('settings.yaml', '.'),
         # 环境配置模板
         ('.env.example', '.'),
         # app 模块
@@ -34,12 +40,35 @@ a = Analysis(
         'webview.util',
         'webview.js',
         'webview.dom',
+        # pywebview 依赖 (pythonnet / clr_loader / bottle)
+        'pythonnet',
+        'clr_loader',
+        'clr_loader.netcore',
+        'bottle',
+        'proxy_tools',
+        'System',
+        'System.Windows.Forms',
+        'System.Drawing',
         # v12.0: SQLite 存储
         'storage',
         'sqlite3',
         'aiosqlite',
         # v12.0: 统一视频引擎
         'video_engine',
+        # P6: 工业引擎桥接 + 新引擎/质量门模块
+        'industrial_bridge',
+        # P6.1: Novel-Director 剧本 JSON 桥（CLI，供 ComfyUI 编排层）
+        'novel_director_bridge',
+        'engines',
+        'engines.base',
+        'engines.local',
+        'engines.quality_loop',
+        'quality',
+        'quality.gate',
+        'quality.visual',
+        'config',
+        'config.settings',
+        'yaml',
         # v12.0: 环境生成器
         'environment_generator',
         # v12.1: 系统托盘
@@ -156,9 +185,10 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    file_version='12.1.0.0',
-    product_version='12.1.0',
+    file_version='12.2.0.0',
+    product_version='12.2.0',
     product_name='LuminaForge',
     company_name='LuminaForge Studio',
-    file_description='墨影流光 · 小说转视频工作台 v12.1',
+    file_description='墨影流光 · 小说转视频工作台 v12.2',
+    version='luminaforge_version_info.txt',
 )

@@ -109,6 +109,7 @@ export interface JobState {
   use_pulid: boolean;
   pulid_model: string;
   pulid_reference_image: string;
+  use_env_anchor: boolean;
   kling_api_key: string;
   kling_face_description: string;
   // Wan2.1
@@ -168,11 +169,14 @@ export interface GenerateRequest {
   style?: string;
   use_ken_burns?: boolean;
   use_dual_frame?: boolean;
+  use_env_anchor?: boolean;
   use_manga_fx?: boolean;
   use_multi_shot?: boolean;
   video_mode?: string;
   tts_enabled?: boolean;
   smart_dubbing?: boolean;
+  max_concurrency?: number;
+  max_scenes?: number;
 }
 
 // ==================== API 响应 ====================

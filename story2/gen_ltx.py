@@ -51,6 +51,7 @@ CAMERA_MOVES = [
 SEGMENTS = {1: 4, 2: 5, 3: 5, 4: 3}
 
 FF = os.environ.get("FFMPEG_PATH") or shutil.which("ffmpeg") or "ffmpeg"
+FFP = os.environ.get("FFPROBE_PATH") or shutil.which("ffprobe") or "ffprobe"
 plan = json.load(open(os.path.join(PLANB, "shots.json"), encoding="utf-8"))
 
 
@@ -162,7 +163,7 @@ def download(out, dest):
 
 def get_video_duration(mp4):
     try:
-        r = subprocess.run([FF, "-v", "error", "-show_entries", "format=duration",
+        r = subprocess.run([FFP, "-v", "error", "-show_entries", "format=duration",
                             "-of", "default=noprint_wrappers=1:nokey=1", mp4],
                            capture_output=True, text=True, timeout=30)
         if r.returncode == 0 and r.stdout.strip():
@@ -235,6 +236,7 @@ def run_vids():
             seg_defs = [{"kf": base_kf, "camera": CAMERA_MOVES[i % len(CAMERA_MOVES)],
                          "emotion": base_emo} for i in range(n_fb)]
         for seg, segdef in enumerate(seg_defs):
+            seg = segdef.get("seg_index", seg)
             kf_path = os.path.join(OUT, segdef["kf"])
             if not os.path.exists(kf_path):
                 log("  ERROR vid shot%02d-%02d: keyframe missing %s, skip" % (sid, seg, kf_path))

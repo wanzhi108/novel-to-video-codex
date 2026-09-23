@@ -1,0 +1,35 @@
+# novel-to-video-codex 工业化配置（设计文档 docs/INDUSTRIALIZATION.md §2.4）
+engines:
+  cloud:
+    video_mode: local         # 用户选定：仅本地，Wan 2.2 TI2V-5B（8GB 稳定、首帧忠实）
+    priority: [seedance_ark, kling_official, minimax, jimeng, grok,
+               fal_kling, fal_seedance, fal_minimax, runway, veo]
+    max_cost_per_clip_usd: 1.0
+    timeout_seconds: 900
+  local:
+    local_kind: wan5b        # comfyui(LTX) | wan(A14B) | wan5b(TI2V-5B，当前生产引擎)
+    checkpoint: ltx-2.3-22b-dev-fp8.safetensors
+    text_encoder: gemma_3_12B_it_fpmixed.safetensors
+    quality: high            # normal|high（high=65帧/3s；步数恒 8+3，蒸馏模型加步数有害）
+    width: 672
+    height: 1152
+    frames: 65               # 8GB显存降负载：960×1728×96帧 会 staging~23GB/170s每步→"卡死"；降为672×1152×65帧稳定（实测场景6-12成功）
+    fps: 24
+
+quality:
+  min_duration_ratio: 0.8
+  min_frames: 24
+  min_file_size: 10000
+  face_similarity: 0.5
+  max_retries: 2
+  retry_strategy: [reseed, switch_engine, rewrite_prompt]
+
+queue:
+  max_concurrency: 2
+  budget_usd: 10.0
+  resume: true
+
+subtitles:
+  style: ass
+  timing: line_accurate     # line_accurate | even_split
+

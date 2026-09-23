@@ -65,7 +65,7 @@ if getattr(sys, "frozen", False) and (sys.stdout is None or sys.stderr is None):
 
 APP_NAME      = "墨影流光"
 APP_NAME_EN   = "LuminaForge"
-APP_VERSION   = "v12.1"
+APP_VERSION   = "v12.2"
 APP_TAGLINE   = "字里乾坤 · 光影成诗"
 
 # 品牌资源路径（开发模式在项目根，打包后在 _MEIPASS）
@@ -905,7 +905,7 @@ body {
     </svg>
   </div>
   <div class="brand">墨影流光</div>
-  <div class="subtitle">LuminaForge v12.1 · 字里乾坤 · 光影成诗</div>
+  <div class="subtitle">LuminaForge v12.2 · 字里乾坤 · 光影成诗</div>
   <div class="spinner"></div>
   <div class="progress-bar"><div class="progress-fill"></div></div>
   <div class="status" id="status">正在启动服务，请稍候...</div>

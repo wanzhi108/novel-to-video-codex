@@ -1,0 +1,200 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{INPUT_IMAGE}}",
+      "upload": "image"
+    }
+  },
+  "2": {
+    "class_type": "ImageResizeKJv2",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "width": "{{WIDTH}}",
+      "height": "{{HEIGHT}}",
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 16,
+      "device": "cpu"
+    }
+  },
+  "3": {
+    "class_type": "CLIPVisionLoader",
+    "inputs": {
+      "clip_name": "{{WAN21_CLIP_VISION}}"
+    }
+  },
+  "4": {
+    "class_type": "WanVideoClipVisionEncode",
+    "inputs": {
+      "clip_vision": [
+        "3",
+        0
+      ],
+      "image_1": [
+        "2",
+        0
+      ],
+      "strength_1": 1.0,
+      "strength_2": 1.0,
+      "crop": "center",
+      "combine_embeds": "average",
+      "force_offload": true
+    }
+  },
+  "5": {
+    "class_type": "LoadWanVideoT5TextEncoder",
+    "inputs": {
+      "model_name": "{{WAN21_T5_ENCODER}}",
+      "precision": "bf16",
+      "load_device": "offload_device",
+      "quantization": "disabled"
+    }
+  },
+  "6": {
+    "class_type": "WanVideoTextEncode",
+    "inputs": {
+      "positive_prompt": "{{POSITIVE_PROMPT}}",
+      "negative_prompt": "{{NEGATIVE_PROMPT}}",
+      "t5": [
+        "5",
+        0
+      ],
+      "force_offload": true,
+      "model_to_offload": [
+        "8",
+        0
+      ],
+      "device": "gpu"
+    }
+  },
+  "7": {
+    "class_type": "WanVideoVAELoader",
+    "inputs": {
+      "model_name": "{{WAN21_VAE}}",
+      "precision": "bf16"
+    }
+  },
+  "8": {
+    "class_type": "WanVideoModelLoader",
+    "inputs": {
+      "model": "{{WAN21_MODEL}}",
+      "base_precision": "fp16",
+      "quantization": "fp8_e4m3fn",
+      "load_device": "offload_device",
+      "attention_mode": "sdpa"
+    }
+  },
+  "9": {
+    "class_type": "WanVideoBlockSwap",
+    "inputs": {
+      "blocks_to_swap": "{{BLOCKS_TO_SWAP}}",
+      "offload_img_emb": false,
+      "offload_txt_emb": false,
+      "vace_blocks_to_swap": 0
+    }
+  },
+  "10": {
+    "class_type": "WanVideoSetBlockSwap",
+    "inputs": {
+      "model": [
+        "8",
+        0
+      ],
+      "block_swap_args": [
+        "9",
+        0
+      ]
+    }
+  },
+  "11": {
+    "class_type": "WanVideoImageToVideoEncode",
+    "inputs": {
+      "width": "{{WIDTH}}",
+      "height": "{{HEIGHT}}",
+      "num_frames": "{{LENGTH}}",
+      "noise_aug_strength": 0.03,
+      "start_latent_strength": 1.0,
+      "end_latent_strength": 1.0,
+      "force_offload": true,
+      "vae": [
+        "7",
+        0
+      ],
+      "clip_embeds": [
+        "4",
+        0
+      ],
+      "start_image": [
+        "2",
+        0
+      ]
+    }
+  },
+  "12": {
+    "class_type": "WanVideoSampler",
+    "inputs": {
+      "model": [
+        "10",
+        0
+      ],
+      "image_embeds": [
+        "11",
+        0
+      ],
+      "text_embeds": [
+        "6",
+        0
+      ],
+      "steps": "{{STEPS}}",
+      "cfg": 5.0,
+      "shift": 5.0,
+      "seed": "{{SEED}}",
+      "force_offload": true,
+      "scheduler": "dpm++_sde",
+      "riflex_freq_index": 0
+    }
+  },
+  "13": {
+    "class_type": "WanVideoDecode",
+    "inputs": {
+      "vae": [
+        "7",
+        0
+      ],
+      "samples": [
+        "12",
+        0
+      ],
+      "enable_vae_tiling": true,
+      "tile_x": 272,
+      "tile_y": 272,
+      "tile_stride_x": 144,
+      "tile_stride_y": 128
+    }
+  },
+  "14": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": [
+        "13",
+        0
+      ],
+      "frame_rate": "{{FRAME_RATE}}",
+      "loop_count": 0,
+      "filename_prefix": "{{FILENAME_PREFIX}}",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true
+    }
+  }
+}
