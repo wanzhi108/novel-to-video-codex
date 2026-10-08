@@ -1,5 +1,8 @@
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import json
-d = json.load(open(r"D:\novel-to-video-codex\comfyui\obj_info_raw.json", encoding="utf-8-sig"))
+d = json.load(open(str(_ROOT / "comfyui" / "obj_info_raw.json"), encoding="utf-8-sig"))
 for n in ["ImageResizeKJv2", "ImageScale", "ImageScaleBy"]:
     if n in d:
         print("==", n, "==")

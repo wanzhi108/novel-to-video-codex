@@ -1,11 +1,14 @@
 """完整开场片 第2步：按配音时长延时画面 → 拼接 → 生成 ASS 字幕 → 混音+烧字幕 → 成片。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import subprocess, os, json
 
 FFMPEG = os.path.expanduser(r"~\ffmpeg-shared\ffmpeg-8.1.1-full_build-shared\bin\ffmpeg.exe")
 FFPROBE = os.path.expanduser(r"~\ffmpeg-shared\ffmpeg-8.1.1-full_build-shared\bin\ffprobe.exe")
-WORK = r"D:\novel-to-video-codex\output\opening_final"
-AC = r"D:\novel-to-video-codex\output\wan5b_ac"
+WORK = str(_ROOT / "output" / "opening_final")
+AC = str(_ROOT / "output" / "wan5b_ac")
 
 # 每镜的台词行（顺序与 build_opening_audio.py 一致）
 LINES = {

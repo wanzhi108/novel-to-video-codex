@@ -1,10 +1,13 @@
 """从 Modelscope 下载 LTX-2 fp8 (27GB)，带 chunk 超时 + 断点续传。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import time
 import requests
 
 url = "https://modelscope.cn/models/Lightricks/LTX-2/resolve/master/ltx-2-19b-distilled-fp8.safetensors"
-dest = r"D:\novel-to-video-codex\LTX-2-OPTIMIZED\models\ltx-2-19b-distilled-fp8.safetensors"
+dest = str(_ROOT / "LTX-2-OPTIMIZED" / "models" / "ltx-2-19b-distilled-fp8.safetensors")
 
 # 断点续传：若已下载部分，用 Range 继续
 mode = "ab" if os.path.exists(dest) and os.path.getsize(dest) > 0 else "wb"

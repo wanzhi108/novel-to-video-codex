@@ -1,11 +1,14 @@
 """审查已完成场景(1-5)成片的技术指标 + 视觉质量。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import json
 import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"D:\novel-to-video-codex")
+sys.path.insert(0, str(_ROOT))
 
 from quality.visual import assess_video  # noqa: E402
 

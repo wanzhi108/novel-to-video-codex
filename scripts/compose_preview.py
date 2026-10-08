@@ -1,9 +1,12 @@
 """方案B：把 5 个带字幕的场景拼接成预告片段（xfade 转场）。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"D:\novel-to-video-codex")
+sys.path.insert(0, str(_ROOT))
 
 from post.compose import concat_xfade  # noqa: E402
 

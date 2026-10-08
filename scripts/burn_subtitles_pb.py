@@ -3,13 +3,16 @@
 红果漫剧硬性要求字幕。这些成片有配音时间轴(subtitle_timings)但没烧字幕。
 用 post/compose.burn_subtitles 给每个场景成片加 ASS 字幕，产出 _subbed.mp4。
 """
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import json
 import sys
 import urllib.request
 from pathlib import Path
 
-sys.path.insert(0, r"D:\novel-to-video-codex")
+sys.path.insert(0, str(_ROOT))
 
 OUT = Path(os.path.expanduser(r"~\AppData\Local\Programs\LuminaForge\output\cfb52fe4"))
 

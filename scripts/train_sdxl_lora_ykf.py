@@ -3,6 +3,9 @@
 → 保存为 ComfyUI 可加载的 LoRA (.safetensors)。
 8GB：fp16 + 梯度检查点 + batch1 + 低分辨率(512x768) + 少步数。
 """
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import argparse, os, sys, glob, random
 import numpy as np
 import torch
@@ -12,7 +15,7 @@ from PIL import Image
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 CKPT = r"D:\ComfyUI-WorkFisher-V2\ComfyUI\models\checkpoints\RealVisXL_V4.0.safetensors"
-DATA = r"D:\novel-to-video-codex\dataset\yhkf"
+DATA = str(_ROOT / "dataset" / "yhkf")
 OUT = r"D:\ComfyUI-WorkFisher-V2\ComfyUI\models\loras\ykf_scene.safetensors"
 INSTANCE = "a photo of sks chinese herbal medicine shop"
 

@@ -1,6 +1,9 @@
 """漫剧开场镜真实测试：Wan5BEngine 动画 t2i_opening_kf 关键帧。
 产物: output/wan5b_opening/wan5b_opening.mp4
 """
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import asyncio, sys, time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -19,7 +22,7 @@ async def main():
         first_frame=kf,
         width=704, height=1280, duration_seconds=2.0, fps=24, seed=2024,
         negative_prompt="blurry, low quality, watermark, flicker, deformed, extra limbs, bad hands",
-        output_dir=Path(r"D:\novel-to-video-codex\output\wan5b_opening"),
+        output_dir=Path(str(_ROOT / "output" / "wan5b_opening")),
         output_name="wan5b_opening",
         timeout_seconds=2400,
     )

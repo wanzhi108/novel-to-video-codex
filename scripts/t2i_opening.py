@@ -1,6 +1,9 @@
 """生成漫剧开场镜头的关键帧（黎明前黑暗药铺 / 叶玄机摸黑），RealVisXL 竖屏。
 产物: ComfyUI input/t2i_opening_kf.png + output/t2i_opening_kf.png
 """
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import json, time, urllib.request, shutil, os, sys
 
 BASE = "http://127.0.0.1:8188"
@@ -70,7 +73,7 @@ while True:
                 src = os.path.join(r"D:\ComfyUI-WorkFisher-V2\ComfyUI\output", img["subfolder"], img["filename"])
                 dest = r"D:\ComfyUI-WorkFisher-V2\ComfyUI\input\t2i_opening_kf.png"
                 shutil.copyfile(src, dest)
-                proj = r"D:\novel-to-video-codex\output\t2i_opening_kf.png"
+                proj = str(_ROOT / "output" / "t2i_opening_kf.png")
                 os.makedirs(os.path.dirname(proj), exist_ok=True)
                 shutil.copyfile(src, proj)
                 print("SAVED input/t2i_opening_kf.png size=", os.path.getsize(dest))

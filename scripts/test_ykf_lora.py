@@ -1,4 +1,7 @@
 """C: 验证训练好的药铺场景 LoRA。用 RealVisXL + ykf_scene LoRA + 触发词 'sks chinese herbal medicine shop' 生成。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import json, time, urllib.request, shutil, os, sys
 
 BASE = "http://127.0.0.1:8188"
@@ -58,7 +61,7 @@ while True:
                     img = v["images"][0]; break
             if img:
                 src = os.path.join(r"D:\ComfyUI-WorkFisher-V2\ComfyUI\output", img["subfolder"], img["filename"])
-                dest = r"D:\novel-to-video-codex\output\lora_test.png"
+                dest = str(_ROOT / "output" / "lora_test.png")
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 shutil.copyfile(src, dest)
                 print("SAVED:", dest, round(time.time()-t0, 1), "s", flush=True)

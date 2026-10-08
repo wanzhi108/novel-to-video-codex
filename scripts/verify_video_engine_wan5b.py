@@ -1,6 +1,9 @@
 """验证 video_engine 集成：wan5b 模式注册 + 智能路由默认 wan5b。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import sys
-sys.path.insert(0, r"D:\novel-to-video-codex")
+sys.path.insert(0, str(_ROOT))
 
 class FakeScene:
     id = 1

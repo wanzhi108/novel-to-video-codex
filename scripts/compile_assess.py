@@ -1,4 +1,7 @@
 """收集当前作品总体指标：分辨率/时长/音轨/字幕，用于对比红果漫剧标准。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import json
 import subprocess
@@ -46,7 +49,7 @@ print("\n=== 项目级成片/字幕/BGM ===")
 for f in OUT.glob("*.mp4"):
     print(f"  {f.name} ({f.stat().st_size//1024}KB)")
 print("  字幕文件(.srt/.ass):", [f.name for f in OUT.rglob("*.srt")] + [f.name for f in OUT.rglob("*.ass")])
-print("  BGM:", [f.name for f in (r"D:\novel-to-video-codex\bgm").glob("*.mp3")] if (r"D:\novel-to-video-codex\bgm").exists() else "bgm目录不存在")
+print("  BGM:", [f.name for f in (str(_ROOT / "bgm")).glob("*.mp3")] if (str(_ROOT / "bgm")).exists() else "bgm目录不存在")
 
 # 3. 角色一致性（关键帧数量）
 print("\n=== 角色定妆照 / 关键帧 ===")

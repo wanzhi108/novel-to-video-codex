@@ -1,9 +1,12 @@
 """量化验证 B：遮罩外背景是否像素级保留（对比主背景与 inpaint 结果）。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 from PIL import Image
 import numpy as np
 
 master = Image.open(r"D:\ComfyUI-WorkFisher-V2\ComfyUI\input\asset_scene_qiantang.png").convert("RGB")
-res = Image.open(r"D:\novel-to-video-codex\output\b_inpaint\b2_obj.png").convert("RGB")
+res = Image.open(str(_ROOT / "output" / "b_inpaint" / "b2_obj.png")).convert("RGB")
 print("master size", master.size, "res size", res.size)
 a = np.asarray(master.resize(res.size)).astype(np.int16)
 b = np.asarray(res).astype(np.int16)

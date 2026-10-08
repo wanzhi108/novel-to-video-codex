@@ -1,9 +1,12 @@
 """验证场景6-11成片质量。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"D:\novel-to-video-codex")
+sys.path.insert(0, str(_ROOT))
 from quality.visual import assess_video  # noqa: E402
 
 out = Path(os.path.expanduser(r"~\AppData\Local\Programs\LuminaForge\output\cfb52fe4"))

@@ -1,8 +1,11 @@
 """把交付包 zip 切成多卷，便于聊天工具/网盘传输。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os, sys
 
-src = r"D:\novel-to-video-codex_交付包_20260923.zip"
-out_dir = r"D:\novel-to-video-codex_交付包_分卷"
+src = str(_ROOT.parent / "novel-to-video-codex_交付包_20260923.zip")
+out_dir = str(_ROOT.parent / "novel-to-video-codex_交付包_分卷")
 PART = 500 * 1024 * 1024  # 500 MB/卷
 
 os.makedirs(out_dir, exist_ok=True)

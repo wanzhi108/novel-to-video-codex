@@ -1,4 +1,7 @@
 """Wan 批处理测试：2 镜头共享一次模型加载。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import asyncio, sys
 from pathlib import Path
@@ -10,11 +13,11 @@ async def main():
     eng = WanEngine()
     shots = [
         {"first_frame": r"D:\ComfyUI-WorkFisher-V2\ComfyUI\input\scene_001_shot1.png",
-         "reference_image": r"D:\novel-to-video-codex\story2\shot_01_kf_yang.png",
+         "reference_image": str(_ROOT / "story2" / "shot_01_kf_yang.png"),
          "prompt": "a young man in a rain-soaked cyberpunk street at night, cinematic, close-up",
          "output_name": "batchs0"},
         {"first_frame": r"D:\ComfyUI-WorkFisher-V2\ComfyUI\input\scene_002_shot1.png",
-         "reference_image": r"D:\novel-to-video-codex\story2\shot_01_kf_wang.png",
+         "reference_image": str(_ROOT / "story2" / "shot_01_kf_wang.png"),
          "prompt": "a stern boss in a harsh-lit office, medium shot, moody",
          "output_name": "batchs1"},
     ]

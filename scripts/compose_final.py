@@ -1,15 +1,18 @@
 """方案B收尾：给5场景预告片段加BGM，产出完整交付成片。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"D:\novel-to-video-codex")
+sys.path.insert(0, str(_ROOT))
 
 from post.compose import mix_bgm  # noqa: E402
 
 OUT = Path(os.path.expanduser(r"~\AppData\Local\Programs\LuminaForge\output\cfb52fe4"))
 src = OUT / "preview_1-5.mp4"
-bgm = Path(r"D:\novel-to-video-codex\bgm\Horror_Scary.mp3")
+bgm = Path(str(_ROOT / "bgm" / "Horror_Scary.mp3"))
 final = OUT / "深夜赶工_预告成片.mp4"
 
 

@@ -1,11 +1,14 @@
 """完整开场片 第1步：生成配音（edge-tts 多音色：旁白/叶玄机/掌柜），输出逐镜片段 wav + 时长。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import subprocess, os, json, sys
 
-PY = r"D:\novel-to-video-codex\venv\Scripts\python.exe"
+PY = str(_ROOT / "venv" / "Scripts" / "python.exe")
 FFMPEG = os.path.expanduser(r"~\ffmpeg-shared\ffmpeg-8.1.1-full_build-shared\bin\ffmpeg.exe")
 FFPROBE = os.path.expanduser(r"~\ffmpeg-shared\ffmpeg-8.1.1-full_build-shared\bin\ffprobe.exe")
-WORK = r"D:\novel-to-video-codex\output\opening_final"
+WORK = str(_ROOT / "output" / "opening_final")
 os.makedirs(WORK, exist_ok=True)
 
 NARR = "zh-CN-YunyangNeural"   # 旁白（沉稳播报）

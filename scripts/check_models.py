@@ -1,5 +1,8 @@
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import json
-p = r"D:\novel-to-video-codex\comfyui\obj_info_raw.json"
+p = str(_ROOT / "comfyui" / "obj_info_raw.json")
 d = json.load(open(p, encoding="utf-8-sig"))
 for n in ["WanVideoModelLoader", "LoadWanVideoT5TextEncoder"]:
     info = d[n]

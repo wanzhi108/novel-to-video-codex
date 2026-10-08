@@ -1,11 +1,14 @@
 """修正：查项目级字幕/BGM/整体成片。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import json
 import subprocess
 from pathlib import Path
 
 OUT = Path(os.path.expanduser(r"~\AppData\Local\Programs\LuminaForge\output\cfb52fe4"))
-BGM = Path(r"D:\novel-to-video-codex\bgm")
+BGM = Path(str(_ROOT / "bgm"))
 
 print("=== 项目级成片 ===")
 for f in OUT.glob("*.mp4"):

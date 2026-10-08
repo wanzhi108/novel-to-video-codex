@@ -1,6 +1,9 @@
 """C: 自主生成药铺场景训练图数据集（~20张），用于 SDXL LoRA 训练。
 用 asset_scene_qiantang 场景参考 + 变化构图/光线/角度生成，保持"同一个药铺"但构图多样。
 """
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import json, time, urllib.request, shutil, os, sys
 
 BASE = "http://127.0.0.1:8188"
@@ -10,7 +13,7 @@ STEPS, CFG = 26, 6.0
 SCENE_REF = "asset_scene_qiantang.png"
 NEG = ("low quality, blurry, worst quality, watermark, text, logo, deformed, bad anatomy, "
        "extra fingers, jpeg artifacts, cartoon, anime, people, person")
-OUT_DIR = r"D:\novel-to-video-codex\dataset\yhkf"
+OUT_DIR = str(_ROOT / "dataset" / "yhkf")
 os.makedirs(OUT_DIR, exist_ok=True)
 
 BASE_PROMPT = ("interior of an old Chinese herbal medicine shop, dark wooden apothecary cabinets with many "

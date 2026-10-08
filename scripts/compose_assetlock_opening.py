@@ -1,11 +1,14 @@
 """拼接 6 个资产锁定镜(1408x2560@48fps 已统一)成连贯开场。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import subprocess, sys
 from pathlib import Path
 
 FFMPEG = os.path.expanduser(r"~\ffmpeg-shared\ffmpeg-8.1.1-full_build-shared\bin\ffmpeg.exe")
 FFPROBE = os.path.expanduser(r"~\ffmpeg-shared\ffmpeg-8.1.1-full_build-shared\bin\ffprobe.exe")
-OUT_DIR = Path(r"D:\novel-to-video-codex\output\wan5b_assetlock")
+OUT_DIR = Path(str(_ROOT / "output" / "wan5b_assetlock"))
 
 files = [OUT_DIR / f"lk_shot{i}.mp4" for i in range(1, 7)]
 for f in files:

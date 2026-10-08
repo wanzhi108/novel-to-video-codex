@@ -1,10 +1,13 @@
 """把 6 个 Wan5B 镜合成连贯开场片段（统一 1408x2560 @48fps 后拼接）。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import subprocess, sys, os
 from pathlib import Path
 
 FFMPEG = os.path.expanduser(r"~\ffmpeg-shared\ffmpeg-8.1.1-full_build-shared\bin\ffmpeg.exe")
-OUT_DIR = Path(r"D:\novel-to-video-codex\output\wan5b_opening")
+OUT_DIR = Path(str(_ROOT / "output" / "wan5b_opening"))
 WORK = OUT_DIR / "_norm"
 WORK.mkdir(parents=True, exist_ok=True)
 

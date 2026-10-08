@@ -1,7 +1,10 @@
 """批量生成 shot2-6 的 T2I 关键帧（RealVisXL，竖屏 832x1216）。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import json, time, urllib.request, shutil, os, sys
 
-sys.path.insert(0, r"D:\novel-to-video-codex\scripts")
+sys.path.insert(0, str(_ROOT / "scripts"))
 from opening_shots import SHOTS, KF_DIR
 
 BASE = "http://127.0.0.1:8188"

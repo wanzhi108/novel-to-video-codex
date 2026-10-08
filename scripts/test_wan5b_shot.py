@@ -1,4 +1,7 @@
 """验证加固后的 Wan5BEngine：单镜两段式（采样+超分）生成，避免超分 OOM。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import asyncio, sys, time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -7,7 +10,7 @@ from engines.wan5b import Wan5BEngine
 from engines.base import GenerateRequest
 from opening_shots import SHOTS, KF_DIR
 
-OUT = Path(r"D:\novel-to-video-codex\output\wan5b_opening")
+OUT = Path(str(_ROOT / "output" / "wan5b_opening"))
 
 
 async def run_shot(shot):

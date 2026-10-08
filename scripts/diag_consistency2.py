@@ -1,4 +1,7 @@
 """查 IPAdapter 定妆照保存位置 + 生成关键帧是否接入 IPAdapter。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import json
 import subprocess
@@ -24,11 +27,11 @@ for sid in range(1, 6):
 # 3. 查 main.py IPAdapter 定妆照保存逻辑
 print("\n=== main.py IPAdapter 定妆照相关代码 ===")
 import sys
-sys.path.insert(0, r"D:\novel-to-video-codex")
-sys.path.insert(0, r"D:\novel-to-video-codex\scripts")
+sys.path.insert(0, str(_ROOT))
+sys.path.insert(0, str(_ROOT / "scripts"))
 try:
     import main as m
-    src = open(r"D:\novel-to-video-codex\scripts\main.py", encoding="utf-8").read()
+    src = open(str(_ROOT / "scripts" / "main.py"), encoding="utf-8").read()
     for kw in ["portrait", "定妆照", "cast_", "character_material", "_build_character_material"]:
         idxs = [i for i in range(len(src)) if src.startswith(kw, i)][:3]
         for i in idxs:

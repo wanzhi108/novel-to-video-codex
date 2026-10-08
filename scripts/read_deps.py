@@ -1,8 +1,11 @@
 """读 ltx-core pyproject 依赖 + uv.lock torch 版本。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import re
 from pathlib import Path
 
-d = Path(r"D:\novel-to-video-codex\LTX-2-OPTIMIZED")
+d = Path(str(_ROOT / "LTX-2-OPTIMIZED"))
 
 # ltx-core deps
 c = (d / "packages" / "ltx-core" / "pyproject.toml").read_text(encoding="utf-8")

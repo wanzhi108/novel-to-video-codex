@@ -1,6 +1,9 @@
 """验证配置驱动的本地引擎路由：应选中 Wan 5B。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import sys
-sys.path.insert(0, r"D:\novel-to-video-codex")
+sys.path.insert(0, str(_ROOT))
 from config.settings import load_settings
 from engines.registry import EngineRouter
 

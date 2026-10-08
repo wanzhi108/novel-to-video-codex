@@ -1,4 +1,7 @@
 """用资产锁定关键帧(lk_sX_kf.png) + 加固 Wan5B 重渲全部 6 镜。产物 output/wan5b_assetlock/。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import asyncio, sys, time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -7,7 +10,7 @@ from engines.wan5b import Wan5BEngine
 from engines.base import GenerateRequest
 from opening_shots import SHOTS, KF_DIR
 
-OUT = Path(r"D:\novel-to-video-codex\output\wan5b_assetlock")
+OUT = Path(str(_ROOT / "output" / "wan5b_assetlock"))
 
 
 async def main():

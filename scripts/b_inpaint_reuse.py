@@ -2,6 +2,9 @@
 用同一张药铺主背景(asset_scene_qiantang.png)做底，只对遮罩区域 inpaint 重绘主体，
 背景其余部分像素级保留 —— 实现"同一主背景、换主体/细节"。
 """
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import json, time, urllib.request, shutil, os, sys
 from PIL import Image, ImageDraw
 
@@ -12,7 +15,7 @@ MASTER = "asset_scene_qiantang.png"      # 药铺主背景
 W, H = 832, 1216
 STEPS, CFG = 30, 6.5
 COMFY_INPUT = r"D:\ComfyUI-WorkFisher-V2\ComfyUI\input"
-OUT = r"D:\novel-to-video-codex\output\b_inpaint"
+OUT = str(_ROOT / "output" / "b_inpaint")
 os.makedirs(OUT, exist_ok=True)
 
 

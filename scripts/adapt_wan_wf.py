@@ -1,4 +1,7 @@
 """基于官方 Wan2.2 I2V 模板，改成 GGUF + 你的 umt5 + 低分辨率，输出适配工作流。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import json
 from pathlib import Path
 
@@ -26,7 +29,7 @@ for n in w["nodes"]:
             wv[0], wv[1] = 672, 480   # 低分辨率
         print(f"  node {n['id']} I2V encode → {n['widgets_values']}")
 
-out = Path(r"D:\novel-to-video-codex\comfyui\wan22_gguf_lowvram.json")
+out = Path(str(_ROOT / "comfyui" / "wan22_gguf_lowvram.json"))
 w["workflow_name"] = "wan22_gguf_lowvram"
 out.write_text(json.dumps(w, ensure_ascii=False, indent=2), encoding="utf-8")
 print(f"\n✅ 适配工作流已保存: {out}")

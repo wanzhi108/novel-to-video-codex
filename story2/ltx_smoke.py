@@ -1,3 +1,6 @@
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import json, os, sys, time, urllib.request
 from pathlib import Path
 
@@ -54,7 +57,7 @@ def main():
         print("NO OUTPUT", flush=True)
         sys.exit(1)
 
-    dest = Path(r"D:\novel-to-video-codex\story2\smoke") / ("smoke_%df_%s.mp4" % (frames, seed))
+    dest = Path(str(_ROOT / "story2" / "smoke")) / ("smoke_%df_%s.mp4" % (frames, seed))
     dest.parent.mkdir(parents=True, exist_ok=True)
     n = G.download(out, str(dest))
     dur = G.get_video_duration(str(dest))

@@ -1,10 +1,13 @@
 """从 Modelscope 下载 LTX-2 spatial upscaler (1GB)。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import time
 import requests
 
 url = "https://modelscope.cn/models/Lightricks/LTX-2/resolve/master/ltx-2-spatial-upscaler-x2-1.0.safetensors"
-dest = r"D:\novel-to-video-codex\LTX-2-OPTIMIZED\models\ltx-2-spatial-upscaler-x2-1.0.safetensors"
+dest = str(_ROOT / "LTX-2-OPTIMIZED" / "models" / "ltx-2-spatial-upscaler-x2-1.0.safetensors")
 if os.path.exists(dest) and os.path.getsize(dest) > 1e8:
     print("已存在", os.path.getsize(dest)/1e9, "GB")
 else:

@@ -1,4 +1,7 @@
 """用 WanEngine 直接生成一段稳定片（engine 层验证）。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import asyncio, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo 根
@@ -14,7 +17,7 @@ async def main():
         first_frame=kf,
         width=384, height=672, duration_seconds=1.5, fps=24, seed=777,
         negative_prompt="blurry, low quality, watermark, flicker",
-        output_dir=Path(r"D:\novel-to-video-codex\output\wan_engine_test"),
+        output_dir=Path(str(_ROOT / "output" / "wan_engine_test")),
         output_name="shot_test",
     )
     print("是否可用:", eng.is_available(), flush=True)

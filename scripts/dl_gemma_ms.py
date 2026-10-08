@@ -1,4 +1,7 @@
 """从 Modelscope 下载 Gemma 3 12B 全部分片（requests 流式 + 断点元）。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import os
 import time
 import requests
@@ -12,7 +15,7 @@ FILES = [
     "model-00005-of-00005.safetensors",
     "model.safetensors.index.json",
 ]
-DEST = r"D:\novel-to-video-codex\LTX-2-OPTIMIZED\models\gemma3"
+DEST = str(_ROOT / "LTX-2-OPTIMIZED" / "models" / "gemma3")
 os.makedirs(DEST, exist_ok=True)
 
 # 小文件先补（config/tokenizer/preprocessor 已在）

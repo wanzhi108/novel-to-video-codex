@@ -1,4 +1,7 @@
 """资产锁定 A：双参考关键帧测试。IPAdapterFaceID(叶玄机脸) + IPAdapter(药铺场景) → SDXL 生成一镜。"""
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parent.parent
+
 import json, time, urllib.request, os, sys
 
 BASE = "http://127.0.0.1:8188"
@@ -75,7 +78,7 @@ while True:
                     break
             if img:
                 src = os.path.join(r"D:\ComfyUI-WorkFisher-V2\ComfyUI\output", img["subfolder"], img["filename"])
-                dest = r"D:\novel-to-video-codex\output\dualref_test.png"
+                dest = str(_ROOT / "output" / "dualref_test.png")
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 import shutil
                 shutil.copyfile(src, dest)
