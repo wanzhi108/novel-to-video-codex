@@ -7315,6 +7315,22 @@ async def analyze_characters(job_id: str):
             char.cosyvoice_voice = get_cosyvoice_speaker(char)
             characters.append(char)
 
+        # 音色选角（2026-10-09）：VOICE_MATCHING_RULES 会把多个不同角色映射到同一音色
+        # （4 类男主全→云健、4 类女主全→晓晓），这里做"同剧去重"，
+        # 让不同角色听得出是不同人；人工指定（voice_locked）的保持不动。
+        try:
+            from app.voice_cast import apply_casting
+            _cast = apply_casting(
+                characters,
+                narrator_voice=getattr(job, "narrator_voice", "") or "",
+            )
+            logger.info(
+                "[VoiceCast] 角色音色分配: %s",
+                {d["name"]: f"{d['voice_name']}({d['reason']})" for d in _cast},
+            )
+        except Exception as _e:  # 选角失败不应阻断角色分析
+            logger.warning("[VoiceCast] 音色选角跳过: %s", _e)
+
         job.characters = characters
         await JobStorage.save(job)
 
@@ -7337,13 +7353,14 @@ async def analyze_characters(job_id: str):
 
 @app.post("/api/update-character-voice")
 async def update_character_voice(job_id: str, character_name: str, voice_id: str):
-    """手动修改某个角色的声音"""
+    """手动修改某个角色的声音（人工指定后锁定：选角与自动分配不再覆盖）"""
     if job_id not in jobs:
         raise HTTPException(404, "Job not found")
     job = jobs[job_id]
     for char in job.characters:
         if char.name == character_name:
             char.voice_id = voice_id
+            char.voice_locked = True   # 2026-10-09: 人工指定优先级最高
             # 查找声音名称
             for v in RECOMMENDED_VOICES:
                 if v["id"] == voice_id:
@@ -11494,6 +11511,21 @@ async def _auto_analyze_characters(job: JobState, llm_key: str):
             # 打印角色特征（日志）
             if char.appearance or char.clothing:
                 print(f"[角色分析] {char.name}: 外貌={char.appearance[:80]}... | 着装={char.clothing[:60]}...", flush=True)
+
+        # 音色选角（2026-10-09）：本处按角色逐个匹配，需在整批完成后统一去重，
+        # 否则同剧多个角色会拿到同一音色（详见 app/voice_cast.py）。
+        try:
+            from app.voice_cast import apply_casting
+            _cast = apply_casting(
+                job.characters,
+                narrator_voice=getattr(job, "narrator_voice", "") or "",
+            )
+            logger.info(
+                "[VoiceCast] 角色音色分配: %s",
+                {d["name"]: f"{d['voice_name']}({d['reason']})" for d in _cast},
+            )
+        except Exception as _e:
+            logger.warning("[VoiceCast] 音色选角跳过: %s", _e)
 
 async def _start_generation_pipeline(job: JobState):
     """启动场景生成（含智能兜底prompt + ComfyUI 预检 + 完整进度广播）"""

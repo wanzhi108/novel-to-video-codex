@@ -21,6 +21,10 @@ class Character(BaseModel):
     # v12.0: 候选音色列表（每个角色绑定 1-3 个候选音色，支持试听选择）
     voice_candidates: list[str] = []  # Edge-TTS voice_id 列表
 
+    # 2026-10-09: 人工指定音色后置 True —— 音色选角（app/voice_cast.py）不得覆盖它，
+    # 且该音色会作为已占用项，避免分给其它角色。
+    voice_locked: bool = False
+
     # v5.3: 外貌/身体/着装特征 (用于可灵AI生成角色正脸)
     appearance: str = ""      # 外貌特征: 发型、发色、脸型、眼睛颜色、五官特点
     body_type: str = ""      # 身体特征: 身高、体型、姿态特点
