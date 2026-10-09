@@ -7,7 +7,7 @@
 | 源码 | `github.com` 直连被墙；需代理 | `git clone --recurse-submodules`（可 `--proxy`） |
 | 依赖隔离 | torch 会污染主环境（已钉版） | 独立 venv `cosyvoice2/.venv` |
 | torch | `download.pytorch.org` 需代理；CPU 版 ~200MB 且**不抢 8GB 显存** | 装 `torch==2.3.1+cpu` |
-| whisper | `openai-whisper` 源码构建报 `No module named 'pkg_resources'` | 先装 setuptools，再 `--no-build-isolation` |
+| whisper | `openai-whisper` 源码构建报 `No module named 'pkg_resources'`（setuptools>=81 已移除该模块） | 钉 `setuptools<81` 再 `--no-build-isolation` |
 | 模型 | HF LFS 走 `cas-bridge.xethub.hf.co` 仅 ~34KB/s；**ModelScope ~2-4MB/s** | 默认 ModelScope 源 |
 | 模型文件 | 只需 6 类文件 + `CosyVoice-BlankEN/`；TRT/batch/cache 变体可跳过 | 复用 `fetch_cosyvoice_model.py` |
 
@@ -163,7 +163,9 @@ def main(argv=None) -> int:
             rest_f.write_text("\n".join(rest) + "\n", encoding="utf-8")
 
             print("[CosyVoice] 安装依赖（清华源）")
-            ok &= _run([vpy, "-m", "pip", "install", "-q", "--upgrade", "setuptools", "wheel"]) == 0
+            # 注意：openai-whisper 的 setup.py 依赖 pkg_resources，而 setuptools>=81 已将其移除，
+            # 因此必须钉 setuptools<81，否则报 metadata-generation-failed（2026-10-10 实测）
+            ok &= _run([vpy, "-m", "pip", "install", "-q", "--upgrade", "setuptools<81", "wheel"]) == 0
             ok &= _run([vpy, "-m", "pip", "install", "-r", str(rest_f),
                         "--index-url", TSINGHUA, "--trusted-host", "pypi.tuna.tsinghua.edu.cn",
                         "--timeout", "60", "--retries", "3"]) == 0

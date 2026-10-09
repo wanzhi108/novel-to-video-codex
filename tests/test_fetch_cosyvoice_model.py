@@ -100,3 +100,17 @@ def test_sha256_of_matches_hashlib(tmp_path):
     p = tmp_path / "x.bin"
     p.write_bytes(b"x" * 4096)
     assert f.sha256_of(p) == hashlib.sha256(b"x" * 4096).hexdigest()
+
+
+def test_chunk_ranges_covers_exactly():
+    """分块必须无缝覆盖 [0, size)，否则并行下载会缺字节。"""
+    import fetch_cosyvoice_model as f
+
+    ranges = f.chunk_ranges(100, 30)
+    assert ranges == [(0, 29), (30, 59), (60, 89), (90, 99)]
+    assert sum(e - s + 1 for s, e in ranges) == 100
+    assert ranges[0][0] == 0 and ranges[-1][1] == 99
+    # 边界情况
+    assert f.chunk_ranges(0, 10) == []
+    assert f.chunk_ranges(5, 10) == [(0, 4)]
+    assert f.chunk_ranges(30, 30) == [(0, 29)]
