@@ -11858,6 +11858,16 @@ async def startup_check():
     except Exception as e:
         print(f"[Storage] SQLite 初始化失败 (回退到空存储): {e}", flush=True)
 
+    # 环境自检（结构化）：致命项明确报错、警告仅提示，不阻断既有流程
+    try:
+        from app import health as _health
+        _env_report = _health.check_environment(output_dir=OUTPUT_DIR)
+        print(_health.format_report(_env_report), flush=True)
+        if _env_report.fatal_failures:
+            print("[EnvCheck] [ERR] 存在致命环境问题，服务可能无法正常工作（见上方报告）", flush=True)
+    except Exception as _e:
+        print(f"[EnvCheck] 环境自检跳过: {_e}", flush=True)
+
     try:
         issues = []
         

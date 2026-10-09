@@ -1,13 +1,15 @@
+# 运行时依赖 —— 全部精确钉版（禁止 >= / 无版本；由 tests/test_dependency_pinning.py 门禁）
+# 版本取自 2026-10-09 本机 venv（Python 3.11.9）实测可用环境；完整环境快照见 requirements.lock
 fastapi==0.115.6
 uvicorn==0.34.0
 httpx==0.28.1
 python-multipart==0.0.20
 aiofiles==24.1.0
-websockets>=12.0
-edge-tts>=6.1.0
+websockets==17.0.1
+edge-tts==7.2.8
 python-dotenv==1.0.1
 pydub==0.25.1
-
-numpy>=1.26.0
-Pillow>=10.0.0
-audioop-lts>=0.4.1; python_version >= "3.13"
+numpy==2.4.6
+Pillow==12.3.0
+# Python 3.13 起 audioop 被移除，需该兼容包（本机为 3.11，未实测安装）
+audioop-lts==0.4.1; python_version >= "3.13"

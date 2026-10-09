@@ -25,9 +25,15 @@ jobs:
       - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
-          # 运行时代码里部分模块（comfyui 客户端等）是可选重依赖，测试路径不需要全部安装；
-          # 先装测试依赖，缺失的可选依赖由测试内的 skip/降级逻辑处理。
+          # 运行时依赖（全部钉版）+ 测试依赖；缺包会让"环境自检"步骤直接失败
+          pip install -r requirements.txt
           pip install -r requirements-dev.txt
+
+      - name: 环境自检（结构化，离线模式）
+        run: python scripts/check_env.py --no-network
+
+      - name: 依赖钉版校验
+        run: python -m pytest tests/test_dependency_pinning.py -q
 
       - name: 单元与接口测试（硬门禁）
         run: python -m pytest tests -q
