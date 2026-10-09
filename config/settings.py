@@ -45,6 +45,7 @@ class EngineLocal(BaseModel if BaseModel is not object else object):
     fps: int = 24
     quality: str = "high"     # normal|high（high=96帧；步数恒为 8+3，蒸馏模型加步数有害）
     local_kind: str = "comfyui"   # comfyui(LTX) | wan(Wan2.2 A14B 稳定管线)
+    preview: bool = False     # 快速预览档：降分辨率/帧数/步数并关闭超分与补帧（app/preview.py）
 
 
 class Engines(BaseModel if BaseModel is not object else object):
@@ -66,6 +67,8 @@ class Queue(BaseModel if BaseModel is not object else object):
     max_concurrency: int = 2
     budget_usd: float = 10.0
     resume: bool = True
+    cache_enabled: bool = False   # 资产缓存（同参产物复用），默认关闭
+    cache_dir: str = ""           # 留空则用 output/.asset_cache
 
 
 class Subtitles(BaseModel if BaseModel is not object else object):

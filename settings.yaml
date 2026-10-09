@@ -8,6 +8,7 @@ engines:
     timeout_seconds: 900
   local:
     local_kind: wan5b        # comfyui(LTX) | wan(A14B) | wan5b(TI2V-5B，当前生产引擎)
+    preview: false           # 快速预览档：降分辨率/帧数/步数 + 关超分与补帧（改一版先看节奏，见 app/preview.py）
     checkpoint: ltx-2.3-22b-dev-fp8.safetensors
     text_encoder: gemma_3_12B_it_fpmixed.safetensors
     quality: high            # normal|high（high=65帧/3s；步数恒 8+3，蒸馏模型加步数有害）
@@ -28,6 +29,8 @@ queue:
   max_concurrency: 2
   budget_usd: 10.0
   resume: true
+  cache_enabled: false       # 资产缓存：同参产物（提示词+种子+分辨率+模型）命中即复用，默认关闭
+  cache_dir: ""              # 留空 → output/.asset_cache
 
 subtitles:
   style: ass

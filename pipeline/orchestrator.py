@@ -100,6 +100,28 @@ class Orchestrator:
             resume=self.settings.queue.resume,
             state_file=out_root / "queue_state.json")
         results: dict[str, ClipResult] = {}
+        cached_flags: dict[str, bool] = {}
+
+        # 资产缓存（默认关闭）：同参产物命中即复用，跳过引擎调用与预算占用
+        from app.asset_cache import AssetCache, cache_key
+
+        cache_dir = self.settings.queue.cache_dir or (out_root / ".asset_cache")
+        cache = AssetCache(cache_dir, enabled=bool(getattr(self.settings.queue, "cache_enabled", False)))
+
+        def _scene_cache_key(scene: SceneReq) -> str:
+            local = self.settings.engines.local
+            return cache_key({
+                "prompt": scene.prompt,
+                "negative_prompt": scene.negative_prompt,
+                "first_frame": str(scene.first_frame) if getattr(scene, "first_frame", None) else "",
+                "reference_images": [str(p) for p in (getattr(scene, "reference_images", None) or [])],
+                "width": getattr(scene, "width", None),
+                "height": getattr(scene, "height", None),
+                "duration_seconds": scene.duration_seconds,
+                "model": f"{local.local_kind}:{local.checkpoint}",
+                "quality": local.quality,
+                "preview": bool(getattr(local, "preview", False)),
+            })
 
         async def make_task(scene: SceneReq):
             async def run():
@@ -114,12 +136,28 @@ class Orchestrator:
                     output_name=f"scene_{scene.id}",
                     timeout_seconds=self.settings.engines.cloud.timeout_seconds,
                 )
+                # 缓存命中：直接复用产物，不占预算、不调引擎
+                _key = _scene_cache_key(scene)
+                _hit = cache.lookup(_key)
+                if _hit is not None:
+                    results[scene.id] = ClipResult(
+                        video_path=_hit, engine="cache", seed=0, cost_usd=0.0)
+                    cached_flags[scene.id] = True
+                    logger.info(f"[Cache] 命中 scene {scene.id} → {_hit}")
+                    return
+
                 eid = self.tracker.estimate("engine", f"scene {scene.id}",
                                             self.settings.engines.cloud.max_cost_per_clip_usd)
                 if not self.tracker.reserve(eid):
                     raise RuntimeError(f"scene {scene.id}: 预算不足")
                 clip = await gate.generate(req)
                 self.tracker.reconcile(eid, clip.cost_usd)
+                try:
+                    if clip.video_path:
+                        cache.store(_key, clip.video_path)
+                except Exception as _e:  # 缓存写入失败不影响出片
+                    logger.warning(f"[Cache] scene {scene.id} 写入失败(忽略): {_e}")
+                cached_flags[scene.id] = False
                 results[scene.id] = clip
             return run
 
@@ -136,6 +174,7 @@ class Orchestrator:
                     "video": str(c.video_path),
                     "engine": c.engine,
                     "cost_usd": round(c.cost_usd, 4),
+                    "cached": cached_flags.get(cid, False),
                     "duration": c.duration_seconds,
                     "quality": c.quality_report,
                 }
