@@ -20,7 +20,7 @@ import main as m  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-client = TestClient(m.app)
+client = TestClient(m.app, base_url="http://127.0.0.1:8190")
 
 
 def _multipart(obj, filename="job.json"):
@@ -130,3 +130,63 @@ def test_export_redacts_api_key():
     finally:
         client.delete(f"/api/job/{jid}")
         m.jobs.pop(jid, None)
+
+
+# ── 4) P1：CSRF / Host 校验 ─────────────────────────────────
+def test_trusted_host_and_origin_rules():
+    assert m.host_is_trusted("127.0.0.1:8190") is True
+    assert m.host_is_trusted("localhost:8190") is True
+    assert m.host_is_trusted("192.168.1.102:8190") is True   # 私有 IP 字面量（局域网自建）
+    assert m.host_is_trusted("evil.example.com") is False    # 域名 → 防 DNS rebinding
+    assert m.origin_is_trusted("http://127.0.0.1:8190") is True
+    assert m.origin_is_trusted("null") is True               # file:// 页面交由 Host 判定
+    assert m.origin_is_trusted("http://evil.example.com") is False
+
+
+def test_cross_origin_post_blocked():
+    r = client.post(
+        "/api/create-job", content=b"",
+        headers={"Origin": "http://evil.example.com", "Content-Type": "text/plain"},
+    )
+    assert r.status_code == 403, r.text
+    assert "CSRF" in r.text
+
+
+def test_same_origin_post_allowed():
+    r = client.post("/api/create-job", content=b"", headers={"Origin": "http://127.0.0.1:8190"})
+    assert r.status_code == 200, r.text
+    m.jobs.pop(r.json()["job_id"], None)
+
+
+def test_websocket_rejects_cross_origin():
+    with pytest.raises(Exception):
+        with client.websocket_connect(
+            "/ws/progress/wssec", headers={"Origin": "http://evil.example.com"}
+        ) as ws:
+            ws.send_text("x")
+
+
+def test_websocket_allows_same_origin():
+    # Starlette 的 WS 测试客户端默认发 Host: testserver，这里显式给出真实 Host
+    with client.websocket_connect(
+        "/ws/progress/wssec2",
+        headers={"Origin": "http://127.0.0.1:8190", "Host": "127.0.0.1:8190"},
+    ) as ws:
+        ws.send_text("ping")
+
+
+# ── 5) P1：上传限额与文件名清洗 ─────────────────────────────
+def test_upload_over_limit_returns_413(monkeypatch):
+    monkeypatch.setattr(m, "MAX_UPLOAD_BYTES", 1024)
+    monkeypatch.setattr(m, "MAX_UPLOAD_MB", 0)
+    body, ctype = _multipart({"id": "sectestbig", "novel_text": "x"})
+    body = body.replace(b'"x"', b'"' + b"y" * 4096 + b'"')
+    r = client.post("/api/jobs/import", content=body, headers={"Content-Type": ctype})
+    assert r.status_code == 413, r.text
+
+
+def test_upload_filename_traversal_neutralized():
+    assert m.safe_upload_name("..\\..\\evil.png") == "evil.png"
+    assert m.safe_upload_name("../../evil.mp3") == "evil.mp3"
+    assert m.safe_upload_name("") == "upload.bin"
+    assert m.safe_upload_name(None) == "upload.bin"

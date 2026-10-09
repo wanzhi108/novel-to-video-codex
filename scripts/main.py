@@ -11,6 +11,8 @@ from pydantic import BaseModel
 from typing import Optional
 import asyncio, json, os, uuid, time, random, copy, re, shutil, subprocess, logging
 from pathlib import Path
+from urllib.parse import urlparse
+import ipaddress
 import httpx, websockets
 import edge_tts, sys
 import gc  # v8.7.1: 移到顶部，避免循环内重复导入
@@ -84,6 +86,61 @@ async def no_cache_middleware(request, call_next):
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
     return response
+
+# ─── CSRF / DNS Rebinding 防护（P1）────────────────────────
+# 背景：接口无鉴权；浏览器对「简单请求」（text/plain、multipart、query-param 的 POST）
+# 不加预检，任意网页都能跨站驱动本机服务；攻击者还可用恶意域名解析到 127.0.0.1
+# 绕过 Host 检查（DNS rebinding）。这里只放行回环/私有 IP 字面量与显式白名单。
+_TRUSTED_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]", "0.0.0.0"}
+for _h in os.environ.get("NOVEL2VID_TRUSTED_HOSTS", "").split(","):
+    if _h.strip():
+        _TRUSTED_HOSTS.add(_h.strip().lower())
+
+
+def _hostname(raw: str) -> str:
+    """从 Host / Origin 值取主机名（去端口，兼容 IPv6 中括号）。"""
+    raw = (raw or "").strip().lower()
+    if not raw:
+        return ""
+    if raw.startswith("["):
+        return raw.split("]")[0] + "]"
+    return raw.rsplit(":", 1)[0] if raw.count(":") == 1 else raw
+
+
+def _is_private_literal(host: str) -> bool:
+    """回环 / 私有网段 / link-local 的字面 IP（域名不算，防 DNS rebinding）。"""
+    try:
+        ip = ipaddress.ip_address(host.strip("[]"))
+        return ip.is_loopback or ip.is_private or ip.is_link_local
+    except ValueError:
+        return False
+
+
+def host_is_trusted(raw: str) -> bool:
+    h = _hostname(raw)
+    return h in _TRUSTED_HOSTS or _is_private_literal(h)
+
+
+def origin_is_trusted(origin: str) -> bool:
+    """Origin 为 null（file:// 页面）时不据此判定，交由 Host 判定。"""
+    o = (origin or "").strip().lower()
+    if not o or o == "null":
+        return True
+    try:
+        return host_is_trusted(urlparse(o).netloc)
+    except Exception:
+        return False
+
+
+@app.middleware("http")
+async def csrf_guard_middleware(request, call_next):
+    """拦跨站状态变更（POST/PUT/PATCH/DELETE）与 DNS rebinding。"""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if not host_is_trusted(request.headers.get("host", "")):
+            return JSONResponse({"detail": "不受信任的 Host（可能为 DNS rebinding）"}, status_code=403)
+        if not origin_is_trusted(request.headers.get("origin", "")):
+            return JSONResponse({"detail": "跨站请求被拒绝（CSRF 防护）"}, status_code=403)
+    return await call_next(request)
 
 # ─── 配置 ───────────────────────────────────────────────
 # v9.10: 不再重复定义 COMFYUI_URL，统一使用 app.config 导入的值
@@ -191,6 +248,34 @@ def redact_secrets(data):
     if isinstance(data, list):
         return [redact_secrets(v) for v in data]
     return data
+
+
+# ── 上传限额（P1）：流式读取 + 体积上限，避免超大上传耗尽内存/磁盘 ──
+MAX_UPLOAD_MB = int(os.environ.get("NOVEL2VID_MAX_UPLOAD_MB", "200"))
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+
+
+async def read_upload_capped(file: UploadFile, label: str = "文件") -> bytes:
+    """分块读取上传内容，超过上限直接 413。"""
+    chunks, total = [], 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, f"{label}超过上限 {MAX_UPLOAD_MB}MB")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def safe_upload_name(filename: str, fallback: str = "upload.bin") -> str:
+    """取纯文件名并清洗，防上传文件名目录穿越（如 ..\\..\\x.png）。"""
+    name = Path(str(filename or "")).name.replace("\\", "_").replace("/", "_").strip()
+    name = re.sub(r'[<>:"|?*\x00-\x1f]', "_", name).strip(" .")
+    if not name or name in (".", ".."):
+        return fallback
+    return name
 
 # 竖屏 9:16 尺寸 - 红果漫剧标准 1080×1920
 # v6.2: 保持高分辨率输出质量，用批处理优化速度而非降低分辨率
@@ -950,6 +1035,11 @@ async def broadcast_progress(job_id: str, data: dict):
 @app.websocket("/ws/progress/{job_id}")
 async def ws_progress(websocket: WebSocket, job_id: str):
     """前端 WebSocket 接入点，用于接收实时进度 (v8.7: 加锁保护并发)"""
+    # P1: WebSocket 不受同源策略保护，握手阶段自行校验来源
+    if not host_is_trusted(websocket.headers.get("host", "")) or \
+            not origin_is_trusted(websocket.headers.get("origin", "")):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     if job_id not in _ws_locks:
         _ws_locks[job_id] = asyncio.Lock()
@@ -6279,7 +6369,7 @@ async def upload_novel(job_id: str = Form(...), api_key: str = Form(""),
                        novel_title: str = Form(""), file: UploadFile = File(...)):
     if job_id not in jobs:
         raise HTTPException(404, "Job not found")
-    content = (await file.read()).decode("utf-8", errors="ignore")
+    content = (await read_upload_capped(file, "小说文件")).decode("utf-8", errors="ignore")
     jobs[job_id].novel_text = content
     jobs[job_id].deepseek_key = api_key.strip() or DEEPSEEK_DEFAULT_KEY
     jobs[job_id].novel_title = novel_title or file.filename.replace(".txt", "").replace(".md", "")
@@ -6308,8 +6398,8 @@ async def upload_pulid_reference(job_id: str = Form(...), file: UploadFile = Fil
     # 保存到 output/{job_id}/pulid_ref/
     ref_dir = OUTPUT_DIR / job_id / "pulid_ref"
     ref_dir.mkdir(parents=True, exist_ok=True)
-    ref_path = ref_dir / file.filename
-    content = await file.read()
+    ref_path = ref_dir / safe_upload_name(file.filename, "ref.png")
+    content = await read_upload_capped(file, "参考人脸图")
     ref_path.write_bytes(content)
     job.pulid_reference_image = str(ref_path)
     await JobStorage.save(job)
@@ -9924,7 +10014,7 @@ async def export_job_api(job_id: str):
 async def import_job_api(file: UploadFile = File(...)):
     """v12.1: 从 JSON 文件导入项目"""
     try:
-        content = await file.read()
+        content = await read_upload_capped(file, "导入文件")
         data = json.loads(content.decode("utf-8"))
         if isinstance(data, dict) and "job" in data:
             data = data["job"]
@@ -10365,8 +10455,8 @@ async def upload_bgm(file: UploadFile = File(...)):
     bgm_dir.mkdir(exist_ok=True)
     if not file.filename.endswith(".mp3"):
         raise HTTPException(400, "只支持 MP3 格式")
-    save_path = bgm_dir / file.filename
-    content = await file.read()
+    save_path = bgm_dir / safe_upload_name(file.filename, "bgm.mp3")
+    content = await read_upload_capped(file, "音频文件")
     with open(save_path, "wb") as f:
         f.write(content)
     return {"status": "ok", "name": file.filename, "path": str(save_path)}
