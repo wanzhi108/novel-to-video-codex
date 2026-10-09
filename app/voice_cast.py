@@ -70,58 +70,79 @@ def _pool_for(char: Any) -> list[dict]:
     return VOICE_POOL[_gender_of(char)]
 
 
-def cast_voices(characters: Iterable[Any], *, narrator_voice: str = "",
-                preferred: dict[str, str] | None = None) -> list[dict]:
-    """计算分配明细（**不改动入参**），供调用方预览或落盘。
+def _cast_in_pool(characters: Iterable[Any], pool_by_gender: dict, current_attr: str, *,
+                  narrator_value: str = "", preferred: dict[str, str] | None = None,
+                  locked_attr: str = "voice_locked") -> list[dict]:
+    """通用选角核心：同剧去重、人工锁定优先、旁白占位、超容量降级（确定性）。
 
-    返回每项：{name, voice_id, voice_name, candidates, reason}
-    reason ∈ {"locked", "rule", "pool", "over_capacity"}
+    `current_attr` 是角色身上已有音色字段名（edge 用 voice_id，CosyVoice 用 cosyvoice_voice）；
+    字段值若不在池内（陈旧/不存在的音色）一律视为无，避免把非法值原样保留。
+    返回每项：{name, value, candidates, reason}
     """
     occupied: set[str] = set()
-    if narrator_voice:
-        occupied.add(narrator_voice)
+    if narrator_value:
+        occupied.add(narrator_value)
     preferred = preferred or {}
     details: list[dict] = []
 
     for char in characters:
-        pool = _pool_for(char)
+        gender = _get(char, "gender", "")
+        pool = pool_by_gender.get(gender) or pool_by_gender.get("男") or []
+        ids = [v["id"] for v in pool]
+        id_set = set(ids)
         name = _get(char, "name", "") or ""
-        current = _get(char, "voice_id", "") or ""
-        locked = bool(_get(char, "voice_locked", False))
+        current = _get(char, current_attr, "") or ""
+        if current not in id_set:
+            current = ""
+        locked = bool(_get(char, locked_attr, False))
         prefer = preferred.get(name, "")
+        if prefer not in id_set:
+            prefer = ""
 
         chosen = ""
         reason = ""
         if locked and current:
             chosen, reason = current, "locked"
-        elif prefer and prefer in {v["id"] for v in pool}:
+        elif prefer:
             chosen, reason = prefer, "preferred"
         elif current and current not in occupied:
             chosen, reason = current, "rule"
         else:
-            free = [v["id"] for v in pool if v["id"] not in occupied and v["id"] != current]
+            free = [i for i in ids if i not in occupied and i != current]
             if free:
                 # 池内取第一个未被占用的（池顺序固定 → 确定性）
                 chosen, reason = free[0], "pool"
             else:  # 池已被占满（含旁白占位）→ 降级复用，并显式标记
-                fallback = [v["id"] for v in pool if v["id"] != narrator_voice] or [pool[0]["id"]]
+                fallback = [i for i in ids if i != narrator_value] or ids
                 chosen, reason = fallback[0], "over_capacity"
 
         if reason != "over_capacity" and chosen in occupied and not locked:
-            # 兜底：任何情况下都不把已占用音色分给他人
-            free = [v["id"] for v in pool if v["id"] not in occupied]
+            free = [i for i in ids if i not in occupied]
             if free:
                 chosen, reason = free[0], "pool"
 
         occupied.add(chosen)
         details.append({
             "name": name,
-            "voice_id": chosen,
-            "voice_name": _NAME_BY_ID.get(chosen, ""),
-            "candidates": [v["id"] for v in pool if v["id"] != chosen],
+            "value": chosen,
+            "candidates": [i for i in ids if i != chosen],
             "reason": reason or "pool",
         })
     return details
+
+
+def cast_voices(characters: Iterable[Any], *, narrator_voice: str = "",
+                preferred: dict[str, str] | None = None) -> list[dict]:
+    """Edge-TTS 侧选角明细（**不改动入参**）。
+
+    返回每项：{name, voice_id, voice_name, candidates, reason}
+    reason ∈ {"locked", "preferred", "rule", "pool", "over_capacity"}
+    """
+    return [
+        {**d, "voice_id": d["value"], "voice_name": _NAME_BY_ID.get(d["value"], "")}
+        for d in _cast_in_pool(characters, VOICE_POOL, "voice_id",
+                               narrator_value=narrator_voice, preferred=preferred)
+    ]
 
 
 def apply_casting(characters: Iterable[Any], *, narrator_voice: str = "",
@@ -134,3 +155,53 @@ def apply_casting(characters: Iterable[Any], *, narrator_voice: str = "",
         _set(char, "voice_name", detail["voice_name"])
         _set(char, "voice_candidates", detail["candidates"])
     return details
+
+
+# ─── CosyVoice2 speaker 选角 ────────────────────────────────────────────────
+# 池必须与 main.py 的 COSYVOICE_SPEAKERS 以及 cosyvoice2/server.py 的 SPEAKER_DEFS 一致
+# （tests/test_cosyvoice_cast.py 有契约校验）：服务端只预设 3 男 + 3 女 + 1 中性，
+# 若不选角，一部剧里多个同性角色会共用同一把声音。
+COSYVOICE_POOL: dict[str, list[dict]] = {
+    "男": [
+        {"id": "chinese_male_deep", "name": "男·低沉", "tags": ["沉稳", "大气", "低沉", "默认"]},
+        {"id": "chinese_male_young", "name": "男·清朗", "tags": ["活力", "阳光", "清朗"]},
+        {"id": "chinese_male_mature", "name": "男·中年", "tags": ["中年", "沧桑", "播报"]},
+    ],
+    "女": [
+        {"id": "chinese_female_soft", "name": "女·温柔", "tags": ["温柔", "柔和", "内敛", "默认"]},
+        {"id": "chinese_female_bright", "name": "女·活泼",
+         "tags": ["活泼", "俏皮", "灵动", "清纯"]},
+        {"id": "chinese_female_calm", "name": "女·沉稳", "tags": ["慈祥", "沉稳", "中年"]},
+    ],
+    "中性": [{"id": "default", "name": "通用/旁白", "tags": ["通用", "旁白"]}],
+}
+
+_CV_NAME_BY_ID = {v["id"]: v["name"] for vs in COSYVOICE_POOL.values() for v in vs}
+
+
+def cosyvoice_pool_ids(gender: str | None = None) -> list[str]:
+    """CosyVoice speaker 池（可按性别过滤）。"""
+    if gender in COSYVOICE_POOL:
+        return [v["id"] for v in COSYVOICE_POOL[gender]]
+    return [v["id"] for vs in COSYVOICE_POOL.values() for v in vs]
+
+
+def cast_cosyvoice(characters: Iterable[Any], *, narrator_speaker: str = "",
+                   preferred: dict[str, str] | None = None) -> list[dict]:
+    """CosyVoice speaker 选角明细（**不改动入参**）。"""
+    return [
+        {**d, "cosyvoice_voice": d["value"], "speaker_name": _CV_NAME_BY_ID.get(d["value"], "")}
+        for d in _cast_in_pool(characters, COSYVOICE_POOL, "cosyvoice_voice",
+                               narrator_value=narrator_speaker, preferred=preferred)
+    ]
+
+
+def apply_cosyvoice_casting(characters: Iterable[Any], *, narrator_speaker: str = "",
+                            preferred: dict[str, str] | None = None) -> list[dict]:
+    """就地写回 `cosyvoice_voice`，返回分配明细。"""
+    details = cast_cosyvoice(characters, narrator_speaker=narrator_speaker, preferred=preferred)
+    chars = list(characters)
+    for char, detail in zip(chars, details):
+        _set(char, "cosyvoice_voice", detail["cosyvoice_voice"])
+    return details
+

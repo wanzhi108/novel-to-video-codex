@@ -7319,14 +7319,17 @@ async def analyze_characters(job_id: str):
         # （4 类男主全→云健、4 类女主全→晓晓），这里做"同剧去重"，
         # 让不同角色听得出是不同人；人工指定（voice_locked）的保持不动。
         try:
-            from app.voice_cast import apply_casting
+            from app.voice_cast import apply_casting, apply_cosyvoice_casting
             _cast = apply_casting(
                 characters,
                 narrator_voice=getattr(job, "narrator_voice", "") or "",
             )
+            # CosyVoice 侧同样去重（服务端只预设 3 男 + 3 女，否则同性角色会撞同一把声音）
+            _cv_cast = apply_cosyvoice_casting(characters, narrator_speaker="default")
             logger.info(
-                "[VoiceCast] 角色音色分配: %s",
+                "[VoiceCast] 音色分配 edge=%s | cosyvoice=%s",
                 {d["name"]: f"{d['voice_name']}({d['reason']})" for d in _cast},
+                {d["name"]: f"{d['speaker_name']}({d['reason']})" for d in _cv_cast},
             )
         except Exception as _e:  # 选角失败不应阻断角色分析
             logger.warning("[VoiceCast] 音色选角跳过: %s", _e)
@@ -11515,14 +11518,16 @@ async def _auto_analyze_characters(job: JobState, llm_key: str):
         # 音色选角（2026-10-09）：本处按角色逐个匹配，需在整批完成后统一去重，
         # 否则同剧多个角色会拿到同一音色（详见 app/voice_cast.py）。
         try:
-            from app.voice_cast import apply_casting
+            from app.voice_cast import apply_casting, apply_cosyvoice_casting
             _cast = apply_casting(
                 job.characters,
                 narrator_voice=getattr(job, "narrator_voice", "") or "",
             )
+            _cv_cast = apply_cosyvoice_casting(job.characters, narrator_speaker="default")
             logger.info(
-                "[VoiceCast] 角色音色分配: %s",
+                "[VoiceCast] 音色分配 edge=%s | cosyvoice=%s",
                 {d["name"]: f"{d['voice_name']}({d['reason']})" for d in _cast},
+                {d["name"]: f"{d['speaker_name']}({d['reason']})" for d in _cv_cast},
             )
         except Exception as _e:
             logger.warning("[VoiceCast] 音色选角跳过: %s", _e)

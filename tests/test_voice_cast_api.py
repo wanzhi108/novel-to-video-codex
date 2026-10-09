@@ -55,8 +55,10 @@ def test_character_voice_candidates_are_fillable(client, app_module):
 
 
 def test_main_module_wires_voice_cast():
-    """防回退：main.py 的角色分析路径必须接入选角（两处）。"""
+    """防回退：main.py 的角色分析路径必须接入选角（两处，且 edge 与 CosyVoice 都要）。"""
     src = (ROOT / "scripts" / "main.py").read_text(encoding="utf-8")
-    assert src.count("from app.voice_cast import apply_casting") >= 2, \
+    assert src.count("from app.voice_cast import") >= 2, \
         "main.py 应在两条角色分析路径上都接入音色选角"
+    assert src.count("apply_casting(") >= 2, "edge 侧选角未接入"
+    assert src.count("apply_cosyvoice_casting(") >= 2, "CosyVoice 侧选角未接入"
     assert "char.voice_locked = True" in src, "人工指定音色的接口未设置锁定标记"
