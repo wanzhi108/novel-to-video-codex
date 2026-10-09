@@ -625,25 +625,35 @@ class ProcessManager:
         if not hasattr(self, "is_cosyvoice_running"):
             self.is_cosyvoice_running = False
 
-        cosy_root = Path(os.environ.get("COSYVOICE_PATH", ""))
-        if not cosy_root:
-            cosy_root = BASE_DIR / "CosyVoice2"
-        cosy_py = cosy_root / "cosy_env" / "Scripts" / "python.exe"
-        cosy_server = cosy_root / "server.py"
+        # 解析 CosyVoice2 部署根目录：支持
+        #   ① COSYVOICE_PATH 指定的目录
+        #   ② 仓库内新布局 cosyvoice2/（server.py + .venv/ + CosyVoice/ 源码 + pretrained_models/）
+        #   ③ 历史布局 CosyVoice2/（server.py + cosy_env/）
+        def _resolve_cosy(root: Path):
+            for venv in ("cosy_env", ".venv"):
+                py = root / venv / "Scripts" / "python.exe"
+                srv = root / "server.py"
+                if py.exists() and srv.exists():
+                    return py, srv
+            return None, None
 
-        # 若默认路径不存在，回退尝试仓库内/常见安装位置
-        if not cosy_py.exists() or not cosy_server.exists():
-            for cand in [BASE_DIR / "CosyVoice2",
-                         Path(os.environ.get("COSYVOICE_PATH", ""))]:
-                if (cand / "cosy_env" / "Scripts" / "python.exe").exists() \
-                   and (cand / "server.py").exists():
-                    cosy_root = cand
-                    cosy_py = cand / "cosy_env" / "Scripts" / "python.exe"
-                    cosy_server = cand / "server.py"
-                    break
+        cosy_root = None
+        cosy_py = cosy_server = None
+        _cands = []
+        _env_path = os.environ.get("COSYVOICE_PATH", "").strip()
+        if _env_path:
+            _cands.append(Path(_env_path))
+        _cands += [BASE_DIR / "cosyvoice2", BASE_DIR / "CosyVoice2"]
+        for cand in _cands:
+            _py, _srv = _resolve_cosy(cand)
+            if _py and _srv:
+                cosy_root, cosy_py, cosy_server = cand, _py, _srv
+                break
 
-        if not cosy_py.exists() or not cosy_server.exists():
-            self._log(f"未找到 CosyVoice2（路径: {cosy_root}），跳过自动启动", "warn")
+        if cosy_root is None:
+            self._log(
+                f"未找到 CosyVoice2 部署（候选: {[str(c) for c in _cands]}），跳过自动启动；"
+                "可用 python scripts/setup_cosyvoice.py 一键安装", "warn")
             return
 
         self._log(f"启动 CosyVoice2: {cosy_root.name}", "info")

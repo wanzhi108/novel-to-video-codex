@@ -151,6 +151,35 @@ def _check_output_dir(output_dir: Path) -> Check:
         return Check("output_dir", False, "fatal", f"{output_dir} 不可写: {e}")
 
 
+def _check_tts_engines(check_network: bool = True, host: str = "127.0.0.1",
+                       port: int = 50000, timeout: float = 1.5) -> Check:
+    """配音引擎可用性：edge-tts（云端）/ Kokoro（本地包）/ CosyVoice2（本地服务 :50000）。
+
+    配音决定成片"听感"，用户需要一眼看到当前在哪一档：
+    - 仅 edge-tts：通用音色，多角色靠 voice_id 区分（去重逻辑见 app/voice_cast.py）；
+    - CosyVoice2 就绪：音色克隆 + 情绪控制（电影级中文配音）。
+    """
+    edge = _has_module("edge_tts")
+    kokoro = _has_module("kokoro_onnx")
+    cv_ok = False
+    if check_network:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(timeout)
+                cv_ok = s.connect_ex((host, port)) == 0
+        except Exception:
+            cv_ok = False
+
+    parts = [
+        f"edge-tts {'✓' if edge else '✗（缺失，配音不可用）'}",
+        f"kokoro {'✓' if kokoro else '✗'}",
+        (f"CosyVoice2 :{port} " + ("✓ 就绪（音色克隆/情绪控制可用）" if cv_ok else "✗ 未就绪"))
+        if check_network else f"CosyVoice2 :{port} 未探测",
+    ]
+    # edge-tts 缺失属安装不完整（致命）；其余引擎缺失只是降级
+    return Check("tts_engines", edge, "fatal" if not edge else "warn", "；".join(parts))
+
+
 def _check_disk(output_dir: Path, min_gb: float) -> Check:
     try:
         usage = shutil.disk_usage(str(output_dir))
@@ -183,6 +212,7 @@ def check_environment(
         _check_package_group("packages", REQUIRED_PACKAGES, "fatal"),
         _check_package_group("optional_packages", OPTIONAL_PACKAGES, "warn"),
         _check_ffmpeg(),
+        _check_tts_engines(check_network),
         _check_output_dir(out),
         _check_disk(out, min_disk_gb),
         _check_models(models),

@@ -48,6 +48,9 @@ story2/shot_*_kf*.png
 # ── CosyVoice2 模型 ──
 cosyvoice2/pretrained_models/
 cosyvoice2/cosy_env/
+# 官方源码（clone 得到，体积小但不属于本仓库）
+cosyvoice2/CosyVoice/
+cosyvoice2/.venv/
 
 # ── 临时文件 ──
 *.tmp

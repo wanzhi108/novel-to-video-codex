@@ -20,9 +20,17 @@ import traceback
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-sys.path.insert(0, str(ROOT))
+
+# ─── CosyVoice 官方源码位置解析（2026-10-10）─────────────────────────────
+# 本项目把官方仓库 clone 在 ROOT/CosyVoice 子目录（保持工程目录干净），
+# 因此不能直接把 ROOT 当包路径。优先级：COSYVOICE_REPO > ROOT/CosyVoice > ROOT
+_CV_REPO = Path(os.environ.get("COSYVOICE_REPO", "") or (ROOT / "CosyVoice"))
+if not (_CV_REPO / "cosyvoice").is_dir():
+    _CV_REPO = ROOT
+sys.path.insert(0, str(_CV_REPO))
 # CosyVoice 依赖 third_party/Matcha-TTS 子模块
-sys.path.insert(0, str(ROOT / "third_party" / "Matcha-TTS"))
+sys.path.insert(0, str(_CV_REPO / "third_party" / "Matcha-TTS"))
+print(f"[CosyVoice] 源码目录: {_CV_REPO}", flush=True)
 
 # ─── 兼容 shim: hydra 1.x 把 hydra.core 移到 hydra._internal.core ─────
 # matcha.utils.rich_utils 还在用旧 API
