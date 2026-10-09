@@ -37,6 +37,10 @@ interface SettingsStore {
   videoMode: string; // "local" | "cloud_t2v" | "ltx_t2v"
   style: string;
 
+  // Speed profile (2026-10-09)
+  preview: boolean;      // 快速预览档（降档先看节奏）
+  cacheEnabled: boolean; // 资产缓存（同参产物复用）
+
   // UI
   darkMode: boolean;
   sidebarCollapsed: boolean;
@@ -76,6 +80,8 @@ const DEFAULTS = {
   useMultiShot: false,
   videoMode: "local",
   style: "cinematic",
+  preview: false,
+  cacheEnabled: false,
   darkMode: false,
   sidebarCollapsed: false,
 };

@@ -6,6 +6,7 @@ import {
   Save,
   Loader2,
   Users,
+  Gauge,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useState, useEffect } from "react";
@@ -17,6 +18,10 @@ export function Settings() {
   const settings = useSettingsStore();
   const models = useModelList();
   const [saving, setSaving] = useState(false);
+  const [speed, setSpeed] = useState<{
+    preview_summary: string;
+    cache_stats: { entries: number; total_bytes: number };
+  } | null>(null);
 
   // v12.1: 挂载时读取 launcher 启动配置，回填真实持久化值
   useEffect(() => {
@@ -26,15 +31,40 @@ export function Settings() {
         settings.update({
           autoCosyvoice:
             cfg.auto_cosyvoice !== undefined ? !!cfg.auto_cosyvoice : settings.autoCosyvoice,
+          // 2026-10-09: 速度档位（预览档 / 资产缓存）同样持久化在 launcher 配置里
+          preview: cfg.preview !== undefined ? !!cfg.preview : settings.preview,
+          cacheEnabled:
+            cfg.cache_enabled !== undefined ? !!cfg.cache_enabled : settings.cacheEnabled,
         });
       })
       .catch(() => {
         // 读取失败则用本地默认值，不影响界面
       });
+    api
+      .getSpeedProfile()
+      .then((res) => setSpeed(res))
+      .catch(() => {
+        // 后端不可用时静默降级（只影响收益提示展示）
+      });
   }, []);
 
   const handleSaveToBackend = async () => {
     setSaving(true);
+    // ① 先同步 launcher 启动配置（速度档位 / auto_cosyvoice 等，主程序下次启动生效）。
+    //    独立 try/catch：即使下面任务级的生成设置同步失败，这些开关也必须落盘。
+    let launcherOk = false;
+    try {
+      await api.updateLauncherConfig({
+        auto_cosyvoice: settings.autoCosyvoice,
+        preview: settings.preview,
+        cache_enabled: settings.cacheEnabled,
+      });
+      launcherOk = true;
+    } catch {
+      // 落盘失败不阻断，由下方提示体现
+    }
+    // ② 再同步生成参数（注意：/api/update-settings 是**任务级**接口，需要 job_id，
+    //    本页无任务上下文，失败时给出准确提示而不是静默吞掉）
     try {
       await api.updateSettings({
         deepseek_key: settings.deepseekKey,
@@ -47,15 +77,15 @@ export function Settings() {
         style: settings.style,
         video_mode: settings.videoMode,
       });
-      // v12.1: 同步 launcher 启动配置（auto_cosyvoice 等，下次启动主程序生效）
-      try {
-        await api.updateLauncherConfig({ auto_cosyvoice: settings.autoCosyvoice });
-      } catch {
-        // launcher 配置写入失败不阻断主流程
-      }
       toast.success("设置已同步到后端");
     } catch {
-      toast.error("同步失败，设置已保存在本地");
+      if (launcherOk) {
+        toast("速度档位等启动配置已保存；生成参数需在任务页修改（该接口按任务生效）", {
+          icon: "⚠️",
+        });
+      } else {
+        toast.error("同步失败，设置已保存在本地");
+      }
     } finally {
       setSaving(false);
     }
@@ -405,6 +435,48 @@ export function Settings() {
             </label>
           </div>
         </div>
+      </Section>
+
+      {/* 速度档位 (2026-10-09)：预览档 + 资产缓存，主程序下次启动生效 */}
+      <Section icon={Gauge} title="速度档位">
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={settings.preview}
+            onChange={(e) => settings.update({ preview: e.target.checked })}
+            className="rounded mt-0.5"
+          />
+          <span>
+            快速预览档
+            <span className="block text-xs text-gray-400">
+              降分辨率/帧数/步数并关闭超分与补帧，用来先看节奏；正式出片请关闭
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={settings.cacheEnabled}
+            onChange={(e) => settings.update({ cacheEnabled: e.target.checked })}
+            className="rounded mt-0.5"
+          />
+          <span>
+            资产缓存
+            <span className="block text-xs text-gray-400">
+              同提示词 + 同种子的产物直接复用，跳过重复生成
+            </span>
+          </span>
+        </label>
+        {speed && (
+          <div className="text-xs text-gray-500 dark:text-ink-400 space-y-1">
+            <p>{speed.preview_summary}</p>
+            <p>
+              缓存：{speed.cache_stats.entries} 条 ·{" "}
+              {(speed.cache_stats.total_bytes / 1048576).toFixed(1)} MB
+            </p>
+            <p className="text-gray-400">点右上角「同步到后端」保存，主程序下次启动生效</p>
+          </div>
+        )}
       </Section>
     </div>
   );

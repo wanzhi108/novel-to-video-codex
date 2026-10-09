@@ -366,6 +366,16 @@ export const api = {
       { method: "POST", body: JSON.stringify(config) }
     ),
 
+  // /api/speed-profile — 速度档位（预览档 / 资产缓存）状态与收益
+  getSpeedProfile: () =>
+    request<{
+      preview: boolean;
+      cache_enabled: boolean;
+      preview_summary: string;
+      preview_gain: { est_time_ratio: number; est_vram_ratio: number };
+      cache_stats: { enabled: boolean; entries: number; dir: string; total_bytes: number };
+    }>("/api/speed-profile", { method: "GET" }),
+
   // ==================== BGM ====================
 
   // /api/bgm-list
