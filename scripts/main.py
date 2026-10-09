@@ -128,6 +128,70 @@ else:
     OUTPUT_DIR = PROJECT_ROOT / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# ── 媒体路径安全（防目录穿越 / 任意文件读取）────────────────────────
+# 背景：/api/scene-image 等接口直接 FileResponse(scene.image_path)，
+# 而 /api/jobs/import 可注入 image_path=C:\Windows\win.ini → 任意文件读取。
+import tempfile as _tempfile
+
+_MEDIA_ROOTS = [OUTPUT_DIR.resolve(), Path(_tempfile.gettempdir()).resolve()]
+
+_VALID_JOB_ID = re.compile(r"^[A-Za-z0-9_-]{4,64}$")
+
+_SENSITIVE_KEYS = ("deepseek_key", "api_key")
+
+
+def safe_media_path(p, label: str = "文件") -> Path:
+    """把媒体路径限制在允许的根目录（OUTPUT_DIR / 系统临时目录）内。"""
+    if not p:
+        raise HTTPException(404, f"{label}不存在")
+    try:
+        rp = Path(str(p)).resolve()
+    except Exception:
+        raise HTTPException(400, f"{label}路径非法")
+    for root in _MEDIA_ROOTS:
+        try:
+            if rp == root or rp.is_relative_to(root):
+                return rp
+        except Exception:
+            continue
+    raise HTTPException(403, f"禁止访问该路径: {label}")
+
+
+def _looks_like_unsafe_path(v) -> bool:
+    """判断导入数据中的路径是否可疑（绝对路径 / 上级目录穿越）。"""
+    if not isinstance(v, str) or not v.strip():
+        return False
+    s = v.strip()
+    if s.startswith("\\\\") or s.startswith("//"):
+        return True
+    if len(s) > 1 and s[1] == ":":          # C:\... / D:/...
+        return True
+    return ".." in s.replace("/", "\\").split("\\")
+
+
+def sanitize_imported_paths(data: dict) -> dict:
+    """导入外部任务时清掉可疑本地路径，避免其被当作媒体文件读取。"""
+    if not isinstance(data, dict):
+        return data
+    for k in ("pulid_reference_image", "merged_video_path", "reference_image"):
+        if _looks_like_unsafe_path(data.get(k)):
+            data[k] = None
+    for sc in data.get("scenes") or []:
+        if isinstance(sc, dict):
+            for k in ("image_path", "video_path", "final_video_path", "audio_path"):
+                if _looks_like_unsafe_path(sc.get(k)):
+                    sc[k] = None
+    return data
+
+
+def redact_secrets(data):
+    """递归清除对外响应中的凭据字段（API Key 不外泄）。"""
+    if isinstance(data, dict):
+        return {k: ("" if k in _SENSITIVE_KEYS else redact_secrets(v)) for k, v in data.items()}
+    if isinstance(data, list):
+        return [redact_secrets(v) for v in data]
+    return data
+
 # 竖屏 9:16 尺寸 - 红果漫剧标准 1080×1920
 # v6.2: 保持高分辨率输出质量，用批处理优化速度而非降低分辨率
 IMG_WIDTH = 1080
@@ -6344,7 +6408,7 @@ async def get_kling_face_preview(job_id: str):
     job = jobs[job_id]
     if not job.pulid_reference_image or not Path(job.pulid_reference_image).exists():
         raise HTTPException(404, "未找到角色正脸图")
-    return FileResponse(job.pulid_reference_image, media_type="image/png")
+    return FileResponse(safe_media_path(job.pulid_reference_image, "参考人脸图"), media_type="image/png")
 
 @ app.post("/api/analyze-story-structure")
 async def analyze_story_structure_endpoint(job_id: str):
@@ -7080,7 +7144,9 @@ async def get_tts_preview_audio(path: str):
     """获取 TTS 预览音频文件"""
     preview_dir = OUTPUT_DIR / "_tts_preview"
     safe_path = Path(path).resolve()
-    if not str(safe_path).startswith(str(preview_dir.resolve())):
+    # 用真正的路径包含关系判断：字符串 startswith 会被 _tts_preview_xxx 兄弟目录绕过
+    _pv = preview_dir.resolve()
+    if not (safe_path == _pv or safe_path.is_relative_to(_pv)):
         raise HTTPException(403, "禁止访问该路径")
     if not safe_path.exists():
         raise HTTPException(404, "音频文件不存在")
@@ -9851,7 +9917,7 @@ async def export_job_api(job_id: str):
     data = await JobStorage.export_job(job_id)
     if data is None:
         raise HTTPException(404, "Job not found")
-    return {"job": data}
+    return {"job": redact_secrets(data)}
 
 
 @app.post("/api/jobs/import")
@@ -9862,15 +9928,22 @@ async def import_job_api(file: UploadFile = File(...)):
         data = json.loads(content.decode("utf-8"))
         if isinstance(data, dict) and "job" in data:
             data = data["job"]
+        # 安全：校验 id 合法性并清除可疑本地路径，避免导入数据形成越权读写
+        if not isinstance(data, dict) or not _VALID_JOB_ID.match(str(data.get("id") or "")):
+            raise HTTPException(400, "非法任务 ID（仅允许字母/数字/中划线/下划线，4-64 位）")
+        data = sanitize_imported_paths(data)
         job = await JobStorage.import_job(data)
         if job is None:
             raise HTTPException(400, "Invalid job data")
         jobs[job.id] = job
         return {"job_id": job.id, "status": "imported"}
+    except HTTPException:
+        raise
     except json.JSONDecodeError:
         raise HTTPException(400, "Invalid JSON file")
     except Exception as e:
-        raise HTTPException(500, f"Import failed: {e}")
+        logger.exception("导入任务失败: %s", e)
+        raise HTTPException(500, "导入失败（内部错误，详见服务日志）")
 
 
 @app.post("/api/jobs/archive")
@@ -10329,7 +10402,7 @@ async def get_scene_image(job_id: str, scene_id: int):
     scene = next((s for s in jobs[job_id].scenes if s.id == scene_id), None)
     if not scene or not scene.image_path:
         raise HTTPException(404, "Image not found")
-    return FileResponse(scene.image_path)
+    return FileResponse(safe_media_path(scene.image_path, "场景图片"))
 
 @app.get("/api/scene-video/{job_id}/{scene_id}")
 async def get_scene_video(job_id: str, scene_id: int):
@@ -10340,7 +10413,7 @@ async def get_scene_video(job_id: str, scene_id: int):
     vp = scene.final_video_path or scene.video_path if scene else None
     if not vp:
         raise HTTPException(404, "Video not found")
-    return FileResponse(vp, media_type="video/mp4")
+    return FileResponse(safe_media_path(vp, "场景视频"), media_type="video/mp4")
 
 @app.get("/api/scene-audio/{job_id}/{scene_id}")
 async def get_scene_audio(job_id: str, scene_id: int):
@@ -10350,7 +10423,7 @@ async def get_scene_audio(job_id: str, scene_id: int):
     scene = next((s for s in jobs[job_id].scenes if s.id == scene_id), None)
     if not scene or not scene.audio_path:
         raise HTTPException(404, "Audio not found")
-    return FileResponse(scene.audio_path, media_type="audio/mpeg")
+    return FileResponse(safe_media_path(scene.audio_path, "场景配音"), media_type="audio/mpeg")
 
 @app.get("/api/merged-video/{job_id}")
 async def get_merged_video(job_id: str):
@@ -10359,7 +10432,7 @@ async def get_merged_video(job_id: str):
     job = jobs[job_id]
     if not job.merged_video_path or not Path(job.merged_video_path).exists():
         raise HTTPException(404, "Merged video not found")
-    return FileResponse(job.merged_video_path, media_type="video/mp4")
+    return FileResponse(safe_media_path(job.merged_video_path, "合成视频"), media_type="video/mp4")
 
 @app.get("/api/comfyui-check")
 async def check_comfyui():
@@ -11822,4 +11895,9 @@ if __name__ == "__main__":
     print("[TTS] Edge-TTS enabled")
     print(f"[Browser] http://localhost:8190")
     print(f"[WebSocket] ws://localhost:8190/ws/progress/{{job_id}}")
-    uvicorn.run(app, host="0.0.0.0", port=8190)
+    # 安全：默认仅监听本机回环（接口无鉴权，绑 0.0.0.0 会把控制面暴露给局域网）。
+    # 确需局域网访问时显式设置 NOVEL2VID_HOST=0.0.0.0，并自行承担鉴权缺失风险。
+    _host = os.environ.get("NOVEL2VID_HOST", "127.0.0.1")
+    _port = int(os.environ.get("NOVEL2VID_PORT", "8190"))
+    print(f"[Bind] http://{_host}:{_port}")
+    uvicorn.run(app, host=_host, port=_port)

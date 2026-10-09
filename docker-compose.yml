@@ -9,7 +9,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
     ports:
-      - "8188:8188"
+      - "127.0.0.1:8188:8188"
     volumes:
       - ./models:/ComfyUI/models
       - ./comfyui_output:/ComfyUI/output
@@ -29,7 +29,7 @@ services:
     build: .
     container_name: novel2vid-app
     ports:
-      - "8190:8190"
+      - "127.0.0.1:8190:8190"
     environment:
       - COMFYUI_URL=http://comfyui:8188
       - COMFYUI_MODELS_DIR=/models

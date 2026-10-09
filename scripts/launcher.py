@@ -393,7 +393,7 @@ class ProcessManager:
                             from scripts import main as main_module
                             asyncio.set_event_loop(asyncio.new_event_loop())
                             config = uvicorn.Config(
-                                main_module.app, host="0.0.0.0", port=port,
+                                main_module.app, host="127.0.0.1", port=port,
                                 log_level="info", loop="asyncio"
                             )
                             server = uvicorn.Server(config)
