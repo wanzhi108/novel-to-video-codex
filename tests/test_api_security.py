@@ -20,7 +20,6 @@ import main as m  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-client = TestClient(m.app, base_url="http://127.0.0.1:8190")
 
 
 def _multipart(obj, filename="job.json"):
@@ -72,7 +71,7 @@ def test_safe_media_path_allows_output_dir():
         f.unlink(missing_ok=True)
 
 
-def test_scene_image_rejects_path_outside_output():
+def test_scene_image_rejects_path_outside_output(client):
     jid = "sectest01"
     job = m.JobState(id=jid)
     job.scenes = [m.Scene(id=1, image_path=r"C:\Windows\win.ini")]
@@ -84,20 +83,20 @@ def test_scene_image_rejects_path_outside_output():
         m.jobs.pop(jid, None)
 
 
-def test_tts_preview_rejects_prefix_sibling():
+def test_tts_preview_rejects_prefix_sibling(client):
     p = m.OUTPUT_DIR / "_tts_preview_EVIL" / "a.mp3"
     r = client.get("/api/tts-preview-audio", params={"path": str(p)})
     assert r.status_code == 403, r.text
 
 
 # ── 3) 导入校验 + 导出脱敏 ─────────────────────────────────
-def test_import_rejects_illegal_job_id():
+def test_import_rejects_illegal_job_id(client):
     body, ctype = _multipart({"id": "..\\_dsh_decoy", "novel_text": "x"})
     r = client.post("/api/jobs/import", content=body, headers={"Content-Type": ctype})
     assert r.status_code == 400, r.text
 
 
-def test_import_sanitizes_absolute_media_paths():
+def test_import_sanitizes_absolute_media_paths(client):
     jid = "sectestimp"
     body, ctype = _multipart({
         "id": jid, "novel_text": "x", "novel_title": "t",
@@ -114,7 +113,7 @@ def test_import_sanitizes_absolute_media_paths():
         m.jobs.pop(jid, None)
 
 
-def test_export_redacts_api_key():
+def test_export_redacts_api_key(client):
     jid = "sectestexp"
     body, ctype = _multipart({
         "id": jid, "novel_text": "x", "novel_title": "t",
@@ -143,7 +142,7 @@ def test_trusted_host_and_origin_rules():
     assert m.origin_is_trusted("http://evil.example.com") is False
 
 
-def test_cross_origin_post_blocked():
+def test_cross_origin_post_blocked(client):
     r = client.post(
         "/api/create-job", content=b"",
         headers={"Origin": "http://evil.example.com", "Content-Type": "text/plain"},
@@ -152,13 +151,13 @@ def test_cross_origin_post_blocked():
     assert "CSRF" in r.text
 
 
-def test_same_origin_post_allowed():
+def test_same_origin_post_allowed(client):
     r = client.post("/api/create-job", content=b"", headers={"Origin": "http://127.0.0.1:8190"})
     assert r.status_code == 200, r.text
     m.jobs.pop(r.json()["job_id"], None)
 
 
-def test_websocket_rejects_cross_origin():
+def test_websocket_rejects_cross_origin(client):
     with pytest.raises(Exception):
         with client.websocket_connect(
             "/ws/progress/wssec", headers={"Origin": "http://evil.example.com"}
@@ -166,7 +165,7 @@ def test_websocket_rejects_cross_origin():
             ws.send_text("x")
 
 
-def test_websocket_allows_same_origin():
+def test_websocket_allows_same_origin(client):
     # Starlette 的 WS 测试客户端默认发 Host: testserver，这里显式给出真实 Host
     with client.websocket_connect(
         "/ws/progress/wssec2",
@@ -176,7 +175,7 @@ def test_websocket_allows_same_origin():
 
 
 # ── 5) P1：上传限额与文件名清洗 ─────────────────────────────
-def test_upload_over_limit_returns_413(monkeypatch):
+def test_upload_over_limit_returns_413(monkeypatch, client):
     monkeypatch.setattr(m, "MAX_UPLOAD_BYTES", 1024)
     monkeypatch.setattr(m, "MAX_UPLOAD_MB", 0)
     body, ctype = _multipart({"id": "sectestbig", "novel_text": "x"})

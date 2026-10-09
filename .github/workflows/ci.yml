@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          # 运行时代码里部分模块（comfyui 客户端等）是可选重依赖，测试路径不需要全部安装；
+          # 先装测试依赖，缺失的可选依赖由测试内的 skip/降级逻辑处理。
+          pip install -r requirements-dev.txt
+
+      - name: 单元与接口测试（硬门禁）
+        run: python -m pytest tests -q
+
+      - name: 覆盖率报告（门禁阈值 10%，基线建立后收紧到 20%+）
+        run: |
+          python -m pytest tests -q \
+            --cov=scripts --cov=app --cov=config \
+            --cov-report=term-missing --cov-report=xml \
+            --cov-fail-under=10
+
+      - name: 构建产物存在性校验（luminaforge.spec 依赖 web/dist）
+        run: |
+          test -f web/dist/index.html || (echo "web/dist 缺失：请先在 web/ 运行 npm ci && npm run build" && exit 1)
+          test -f settings.yaml
+          test -f .env.example
+
+      - name: 上传覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
