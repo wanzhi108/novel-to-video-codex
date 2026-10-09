@@ -193,100 +193,27 @@ else:
     OUTPUT_DIR = PROJECT_ROOT / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# ── 媒体路径安全（防目录穿越 / 任意文件读取）────────────────────────
-# 背景：/api/scene-image 等接口直接 FileResponse(scene.image_path)，
-# 而 /api/jobs/import 可注入 image_path=C:\Windows\win.ini → 任意文件读取。
-import tempfile as _tempfile
-
-_MEDIA_ROOTS = [OUTPUT_DIR.resolve(), Path(_tempfile.gettempdir()).resolve()]
+# ── 安全能力已下沉到 app/security.py（架构收敛第一阶段）─────────────
+# 路径包含性/上传限额/脱敏/来源校验均为叶子模块 app.security 的纯函数，
+# 便于单测与被 launcher、cosyvoice2、pipeline CLI 复用。
+from app.security import (  # noqa: E402  (模块中途导入，保持原有代码顺序)
+    host_is_trusted,
+    origin_is_trusted,
+    read_upload_capped,
+    redact_secrets,
+    safe_media_path,
+    safe_upload_name,
+    sanitize_imported_paths,
+    set_media_roots,
+)
 
 _VALID_JOB_ID = re.compile(r"^[A-Za-z0-9_-]{4,64}$")
-
-_SENSITIVE_KEYS = ("deepseek_key", "api_key")
-
-
-def safe_media_path(p, label: str = "文件") -> Path:
-    """把媒体路径限制在允许的根目录（OUTPUT_DIR / 系统临时目录）内。"""
-    if not p:
-        raise HTTPException(404, f"{label}不存在")
-    try:
-        rp = Path(str(p)).resolve()
-    except Exception:
-        raise HTTPException(400, f"{label}路径非法")
-    for root in _MEDIA_ROOTS:
-        try:
-            if rp == root or rp.is_relative_to(root):
-                return rp
-        except Exception:
-            continue
-    raise HTTPException(403, f"禁止访问该路径: {label}")
-
-
-def _looks_like_unsafe_path(v) -> bool:
-    """判断导入数据中的路径是否可疑（绝对路径 / 上级目录穿越）。"""
-    if not isinstance(v, str) or not v.strip():
-        return False
-    s = v.strip()
-    if s.startswith("\\\\") or s.startswith("//"):
-        return True
-    if len(s) > 1 and s[1] == ":":          # C:\... / D:/...
-        return True
-    return ".." in s.replace("/", "\\").split("\\")
-
-
-def sanitize_imported_paths(data: dict) -> dict:
-    """导入外部任务时清掉可疑本地路径，避免其被当作媒体文件读取。"""
-    if not isinstance(data, dict):
-        return data
-    for k in ("pulid_reference_image", "merged_video_path", "reference_image"):
-        if _looks_like_unsafe_path(data.get(k)):
-            data[k] = None
-    for sc in data.get("scenes") or []:
-        if isinstance(sc, dict):
-            for k in ("image_path", "video_path", "final_video_path", "audio_path"):
-                if _looks_like_unsafe_path(sc.get(k)):
-                    sc[k] = None
-    return data
-
-
-def redact_secrets(data):
-    """递归清除对外响应中的凭据字段（API Key 不外泄）。"""
-    if isinstance(data, dict):
-        return {k: ("" if k in _SENSITIVE_KEYS else redact_secrets(v)) for k, v in data.items()}
-    if isinstance(data, list):
-        return [redact_secrets(v) for v in data]
-    return data
-
 
 # ── JSON 请求体限额（P2）：结构性接口不接受超大 JSON（文件上传走 multipart 单独限额）──
 MAX_JSON_BODY_BYTES = int(os.environ.get("NOVEL2VID_MAX_JSON_BYTES", str(1024 * 1024)))
 
-# ── 上传限额（P1）：流式读取 + 体积上限，避免超大上传耗尽内存/磁盘 ──
-MAX_UPLOAD_MB = int(os.environ.get("NOVEL2VID_MAX_UPLOAD_MB", "200"))
-MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
-
-
-async def read_upload_capped(file: UploadFile, label: str = "文件") -> bytes:
-    """分块读取上传内容，超过上限直接 413。"""
-    chunks, total = [], 0
-    while True:
-        chunk = await file.read(1024 * 1024)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > MAX_UPLOAD_BYTES:
-            raise HTTPException(413, f"{label}超过上限 {MAX_UPLOAD_MB}MB")
-        chunks.append(chunk)
-    return b"".join(chunks)
-
-
-def safe_upload_name(filename: str, fallback: str = "upload.bin") -> str:
-    """取纯文件名并清洗，防上传文件名目录穿越（如 ..\\..\\x.png）。"""
-    name = Path(str(filename or "")).name.replace("\\", "_").replace("/", "_").strip()
-    name = re.sub(r'[<>:"|?*\x00-\x1f]', "_", name).strip(" .")
-    if not name or name in (".", ".."):
-        return fallback
-    return name
+# 媒体白名单：输出目录（主程序注入）+ 系统临时目录（security 内部保证）
+set_media_roots([OUTPUT_DIR])
 
 # 竖屏 9:16 尺寸 - 红果漫剧标准 1080×1920
 # v6.2: 保持高分辨率输出质量，用批处理优化速度而非降低分辨率

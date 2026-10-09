@@ -176,8 +176,9 @@ def test_websocket_allows_same_origin(client):
 
 # ── 5) P1：上传限额与文件名清洗 ─────────────────────────────
 def test_upload_over_limit_returns_413(monkeypatch, client):
-    monkeypatch.setattr(m, "MAX_UPLOAD_BYTES", 1024)
-    monkeypatch.setattr(m, "MAX_UPLOAD_MB", 0)
+    from app import security as _sec  # 限值已下沉到 app.security
+    monkeypatch.setattr(_sec, "MAX_UPLOAD_BYTES", 1024)
+    monkeypatch.setattr(_sec, "MAX_UPLOAD_MB", 0)
     body, ctype = _multipart({"id": "sectestbig", "novel_text": "x"})
     body = body.replace(b'"x"', b'"' + b"y" * 4096 + b'"')
     r = client.post("/api/jobs/import", content=body, headers={"Content-Type": ctype})
