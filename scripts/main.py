@@ -140,6 +140,14 @@ async def csrf_guard_middleware(request, call_next):
             return JSONResponse({"detail": "不受信任的 Host（可能为 DNS rebinding）"}, status_code=403)
         if not origin_is_trusted(request.headers.get("origin", "")):
             return JSONResponse({"detail": "跨站请求被拒绝（CSRF 防护）"}, status_code=403)
+    # P2: JSON 请求体上限（按 Content-Length 预判，避免超大 body 进入解析）
+    if request.method in ("POST", "PUT", "PATCH"):
+        ctype = (request.headers.get("content-type") or "").lower()
+        clen = (request.headers.get("content-length") or "").strip()
+        if ctype.startswith("application/json") and clen.isdigit() and int(clen) > MAX_JSON_BODY_BYTES:
+            return JSONResponse(
+                {"detail": f"请求体过大（JSON 上限 {MAX_JSON_BODY_BYTES} 字节）"}, status_code=413
+            )
     return await call_next(request)
 
 # ─── 配置 ───────────────────────────────────────────────
@@ -249,6 +257,9 @@ def redact_secrets(data):
         return [redact_secrets(v) for v in data]
     return data
 
+
+# ── JSON 请求体限额（P2）：结构性接口不接受超大 JSON（文件上传走 multipart 单独限额）──
+MAX_JSON_BODY_BYTES = int(os.environ.get("NOVEL2VID_MAX_JSON_BYTES", str(1024 * 1024)))
 
 # ── 上传限额（P1）：流式读取 + 体积上限，避免超大上传耗尽内存/磁盘 ──
 MAX_UPLOAD_MB = int(os.environ.get("NOVEL2VID_MAX_UPLOAD_MB", "200"))
@@ -7173,6 +7184,13 @@ async def update_settings(job_id: str, img_checkpoint: str = "", vid_checkpoint:
 # ───────────────────────────────────────────────────────────
 LAUNCHER_CONFIG_FILE = PROJECT_ROOT / "launcher_config.json"
 
+# P2：launcher 配置字段白名单与类型约束（api_key 等敏感字段禁止经 HTTP 写入）
+_LAUNCHER_BOOL_KEYS = ("auto_cosyvoice", "auto_comfyui", "auto_start_server", "ipadapter")
+_LAUNCHER_STR_KEYS = ("comfyui_url", "quality", "model", "active_preset")
+_LAUNCHER_INT_KEYS = ("port",)
+_LAUNCHER_FORBIDDEN_KEYS = ("api_key", "deepseek_key", "token", "secret")
+_LAUNCHER_ALLOWED_KEYS = set(_LAUNCHER_BOOL_KEYS) | set(_LAUNCHER_STR_KEYS) | set(_LAUNCHER_INT_KEYS)
+
 def _read_launcher_config() -> dict:
     try:
         if LAUNCHER_CONFIG_FILE.exists():
@@ -7194,21 +7212,43 @@ async def get_launcher_config():
 
 @app.post("/api/launcher-config")
 async def post_launcher_config(config: dict):
-    """更新并持久化 launcher 启动配置（如 auto_cosyvoice）。"""
+    """更新并持久化 launcher 启动配置（如 auto_cosyvoice）。
+
+    P2 加固：字段白名单 + 类型校验 + 禁止经本接口写敏感字段（api_key）；
+    体积上限由 csrf_guard_middleware 对 application/json 统一强制。
+    """
     try:
+        if not isinstance(config, dict):
+            raise HTTPException(400, "配置必须是 JSON 对象")
+        forbidden = sorted(k for k in config if k in _LAUNCHER_FORBIDDEN_KEYS)
+        if forbidden:
+            raise HTTPException(400, f"该接口不允许写入敏感字段: {', '.join(forbidden)}（请在设置页单独配置）")
+        unknown = sorted(k for k in config if k not in _LAUNCHER_ALLOWED_KEYS)
+        if unknown:
+            raise HTTPException(
+                400,
+                f"未知配置字段: {', '.join(unknown)}（允许: {', '.join(sorted(_LAUNCHER_ALLOWED_KEYS))}）",
+            )
+        for k, v in config.items():
+            if k in _LAUNCHER_BOOL_KEYS and not isinstance(v, bool):
+                raise HTTPException(400, f"字段 {k} 需为布尔值")
+            if k in _LAUNCHER_STR_KEYS and not isinstance(v, str):
+                raise HTTPException(400, f"字段 {k} 需为字符串")
+            if k in _LAUNCHER_INT_KEYS and (
+                not isinstance(v, int) or isinstance(v, bool) or not (1 <= v <= 65535)
+            ):
+                raise HTTPException(400, f"字段 {k} 需为 1-65535 的整数")
         existing = _read_launcher_config()
-        # 仅合并已知启动项，避免写入无关字段
-        known_keys = ("auto_cosyvoice", "auto_comfyui", "auto_start_server",
-                      "comfyui_url", "port", "api_key", "quality", "model",
-                      "ipadapter", "active_preset")
-        for k in known_keys:
-            if k in config:
-                existing[k] = config[k]
+        for k, v in config.items():
+            existing[k] = v
         with open(LAUNCHER_CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(existing, f, indent=2, ensure_ascii=False)
         return {"status": "ok", "config": existing}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(500, f"保存 launcher 配置失败: {e}")
+        logger.exception("保存 launcher 配置失败: %s", e)
+        raise HTTPException(500, "保存 launcher 配置失败（内部错误，详见服务日志）")
 
 @app.get("/api/tts-voices")
 async def get_tts_voices():
@@ -7227,7 +7267,8 @@ async def preview_tts(text: str = "这是一段测试语音，用于预览声音
         duration = await generate_tts(text, preview_path, voice=voice, rate=rate, volume=volume)
         return {"status": "ok", "audio_path": preview_path, "duration": duration}
     except Exception as e:
-        raise HTTPException(500, f"TTS 预览失败: {str(e)[:200]}")
+        logger.exception("TTS 预览失败: %s", e)
+        raise HTTPException(500, "TTS 预览失败（内部错误，详见服务日志）")
 
 @app.get("/api/tts-preview-audio")
 async def get_tts_preview_audio(path: str):
@@ -10109,7 +10150,8 @@ async def auto_pipeline(job_id: str, skip_completed: bool = True):
         try:
             await generate_prompts(job_id)
         except Exception as e:
-            raise HTTPException(500, f"生成提示词失败: {e}")
+            logger.exception("生成提示词失败: %s", e)
+            raise HTTPException(500, "生成提示词失败（内部错误，详见服务日志）")
 
     # 开始生成
     await start_generation(job_id)
@@ -10413,7 +10455,8 @@ async def merge_all_videos(job_id: str, bgm_path: str = "", bgm_volume: float = 
             await JobStorage.save(job)
             return {"status": "ok", "merged_path": series_path, "scenes_merged": len(video_paths)}
     except Exception as e:
-        raise HTTPException(500, f"合并视频失败: {str(e)[:300]}")
+        logger.exception("合并视频失败: %s", e)
+        raise HTTPException(500, "合并视频失败（内部错误，详见服务日志）")
 
 @app.get("/api/bgm-list")
 async def list_bgm():
@@ -11959,12 +12002,30 @@ class NoCacheStaticFiles(StaticFiles):
     """
     async def get_response(self, path: str, scope):
         # path 形如 "tasks"（无前导斜杠）。后端 API/WS 由更早的路由处理，不会走到这里。
+        # P2: 带扩展名的静态资源与 /api 前缀不再享受 SPA 回退 —— 返回真实 404，
+        # 避免"任何不存在的路径都 200 返回首页"掩盖错误；前端客户端路由无扩展名，仍回退。
+        # 注意：Starlette 在 Windows 下会把路径规整成反斜杠（api\nope），比较前先归一化
+        _norm = path.replace("\\", "/")
+        looks_like_asset = bool(os.path.splitext(_norm)[1]) or _norm.startswith("api/")
+        if looks_like_asset:
+            # StaticFiles(html=True) 自身会把不存在的路径兜底成 index.html(200)，
+            # 所以资产类路径必须先判磁盘存在性，不存在就直接 404。
+            try:
+                base = Path(self.directory).resolve()
+                target = (base / path).resolve()
+                exists = target.is_file() and (target == base or target.is_relative_to(base))
+            except Exception:
+                exists = False
+            if not exists:
+                raise HTTPException(404, "Not Found")
         try:
             response = await super().get_response(path, scope)
             # StaticFiles(html=True) 对不存在的磁盘路径也可能直接返回 404 response（而非抛异常）
-            if response.status_code == 404 and not path.startswith("assets/"):
+            if response.status_code == 404 and not looks_like_asset:
                 response = await super().get_response("index.html", scope)
         except Exception:
+            if looks_like_asset:
+                raise HTTPException(404, "Not Found")
             # 磁盘无此文件（抛异常）→ 回退到 SPA 入口 index.html
             response = await super().get_response("index.html", scope)
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
