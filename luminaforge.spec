@@ -7,6 +7,20 @@ from pathlib import Path
 
 project_dir = Path(".").resolve()
 
+# ── 构建前置校验（2026-10-09）：缺核心依赖 / 缺前端产物 → 直接中止构建 ──
+# 背景：本机曾在 Python 环境被清空后静默产出 28MB 残废 exe（启动即崩、console=False 看不到错误）。
+import subprocess as _subprocess
+
+_pb = _subprocess.run(
+    [sys.executable, str(project_dir / "scripts" / "prebuild_check.py"), "--root", str(project_dir)],
+    cwd=str(project_dir),
+)
+if _pb.returncode != 0:
+    raise SystemExit(
+        "\n[PreBuild] 构建已中止：请按上方报告修复后重试"
+        "（缺依赖 → pip install -r requirements.txt；缺前端 → 在 web/ 执行 npm ci && npm run build）\n"
+    )
+
 a = Analysis(
     ['scripts/launcher.py'],
     pathex=[str(project_dir), str(project_dir / "scripts")],

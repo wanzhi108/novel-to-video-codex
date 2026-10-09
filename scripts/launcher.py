@@ -352,6 +352,27 @@ class ProcessManager:
 
         self._log("正在启动服务器...", "info")
 
+        # 启动前环境自检（2026-10-09）：结构化报告写入启动日志，致命项显式告警。
+        # 仅告警不阻断，避免影响既有开发流程；构建期另有硬门禁（scripts/prebuild_check.py）。
+        try:
+            _root = Path(__file__).resolve().parent.parent
+            if str(_root) not in sys.path:
+                sys.path.insert(0, str(_root))
+            from app import health as _health
+
+            _env = _health.check_environment(check_network=False)
+            for _c in _env.checks:
+                _mark = "OK  " if _c.ok else ("FAIL" if _c.level == "fatal" else "WARN")
+                self._log(f"[EnvCheck] {_mark} {_c.name}: {_c.detail}", "info" if _c.ok else "warn")
+            if _env.fatal_failures:
+                self._log(
+                    f"[EnvCheck] 存在 {len(_env.fatal_failures)} 项致命环境问题，服务可能无法正常工作；"
+                    "可运行 python scripts/check_env.py 查看详情",
+                    "err",
+                )
+        except Exception as _e:  # 自检失败不应阻断启动
+            self._log(f"[EnvCheck] 环境自检跳过: {_e}", "warn")
+
         # 自动启动 ComfyUI
         if self.config.auto_comfyui:
             try:
