@@ -7112,7 +7112,8 @@ async def update_settings(job_id: str, img_checkpoint: str = "", vid_checkpoint:
 LAUNCHER_CONFIG_FILE = PROJECT_ROOT / "launcher_config.json"
 
 # P2：launcher 配置字段白名单与类型约束（api_key 等敏感字段禁止经 HTTP 写入）
-_LAUNCHER_BOOL_KEYS = ("auto_cosyvoice", "auto_comfyui", "auto_start_server", "ipadapter")
+_LAUNCHER_BOOL_KEYS = ("auto_cosyvoice", "auto_comfyui", "auto_start_server", "ipadapter",
+                       "preview", "cache_enabled")
 _LAUNCHER_STR_KEYS = ("comfyui_url", "quality", "model", "active_preset")
 _LAUNCHER_INT_KEYS = ("port",)
 _LAUNCHER_FORBIDDEN_KEYS = ("api_key", "deepseek_key", "token", "secret")
@@ -7176,6 +7177,47 @@ async def post_launcher_config(config: dict):
     except Exception as e:
         logger.exception("保存 launcher 配置失败: %s", e)
         raise HTTPException(500, "保存 launcher 配置失败（内部错误，详见服务日志）")
+
+
+@app.get("/api/speed-profile")
+async def get_speed_profile():
+    """速度档位状态：预览档 / 资产缓存 / 预览收益估算 / 缓存统计。
+
+    开关通过 POST /api/launcher-config 写入（字段 preview / cache_enabled），
+    launcher 启动时导出为 NOVEL2VID_PREVIEW / NOVEL2VID_ASSET_CACHE 环境变量，
+    由 config.settings 读取（环境变量优先于 settings.yaml）。
+    """
+    from app import preview as _preview
+    from app.asset_cache import AssetCache
+
+    try:
+        from config.settings import load_settings
+        _local = load_settings().engines.local
+        base = {"width": _local.width, "height": _local.height, "frames": _local.frames,
+                "steps": 8, "upscale": True, "interpolate": True}
+    except Exception:
+        base = {"width": VID_WIDTH, "height": VID_HEIGHT, "frames": 65,
+                "steps": 8, "upscale": True, "interpolate": True}
+
+    def _on(key: str, env: str) -> bool:
+        raw = os.environ.get(env, "").strip().lower()
+        return bool(_read_launcher_config().get(key, raw in ("1", "true", "yes", "on")))
+
+    preview_on = _on("preview", "NOVEL2VID_PREVIEW")
+    cache_on = _on("cache_enabled", "NOVEL2VID_ASSET_CACHE")
+    cache_dir = (os.environ.get("NOVEL2VID_CACHE_DIR", "").strip()
+                 or str(OUTPUT_DIR / ".asset_cache"))
+    cache = AssetCache(cache_dir, enabled=cache_on)
+
+    return {
+        "preview": preview_on,
+        "cache_enabled": cache_on,
+        "preview_gain": _preview.estimate_gain(base),
+        "preview_summary": _preview.summarize(base),
+        "cache_stats": cache.stats(),
+        "base_params": base,
+        "note": "开关写入 launcher_config.json；launcher 启动时导出为环境变量供管道读取",
+    }
 
 @app.get("/api/tts-voices")
 async def get_tts_voices():

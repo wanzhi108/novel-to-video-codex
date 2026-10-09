@@ -352,6 +352,24 @@ class ProcessManager:
 
         self._log("正在启动服务器...", "info")
 
+        # 速度档位（2026-10-09）：把 launcher_config.json 里的 preview / cache_enabled
+        # 导出为环境变量，供 config.settings 读取（环境变量优先于 settings.yaml），
+        # 这样"预览档 + 资产缓存"无需手改配置文件即可生效。
+        try:
+            _cfg_file = Path(__file__).resolve().parent.parent / "launcher_config.json"
+            if _cfg_file.exists():
+                _lc = json.loads(_cfg_file.read_text(encoding="utf-8"))
+                if _lc.get("preview"):
+                    os.environ["NOVEL2VID_PREVIEW"] = "1"
+                    self._log("[Speed] 预览档已启用（降分辨率/帧数/步数，关超分与补帧）", "info")
+                if _lc.get("cache_enabled"):
+                    os.environ["NOVEL2VID_ASSET_CACHE"] = "1"
+                    self._log("[Speed] 资产缓存已启用（同参产物直接复用）", "info")
+                if _lc.get("cache_dir"):
+                    os.environ["NOVEL2VID_CACHE_DIR"] = str(_lc["cache_dir"])
+        except Exception as _e:
+            self._log(f"[Speed] 速度档位读取失败(忽略): {_e}", "warn")
+
         # 启动前环境自检（2026-10-09）：结构化报告写入启动日志，致命项显式告警。
         # 仅告警不阻断，避免影响既有开发流程；构建期另有硬门禁（scripts/prebuild_check.py）。
         try:

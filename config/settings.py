@@ -36,6 +36,14 @@ class EngineCloud(BaseModel if BaseModel is not object else object):
     timeout_seconds: float = 900.0
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    """读取布尔型环境变量（launcher 用它把速度档位传给服务进程）。"""
+    raw = os.environ.get(name, "")
+    if not raw.strip():
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 class EngineLocal(BaseModel if BaseModel is not object else object):
     checkpoint: str = "ltx-2.3-22b-dev-fp8.safetensors"
     text_encoder: str = "gemma_3_12B_it_fpmixed.safetensors"
@@ -45,7 +53,7 @@ class EngineLocal(BaseModel if BaseModel is not object else object):
     fps: int = 24
     quality: str = "high"     # normal|high（high=96帧；步数恒为 8+3，蒸馏模型加步数有害）
     local_kind: str = "comfyui"   # comfyui(LTX) | wan(Wan2.2 A14B 稳定管线)
-    preview: bool = False     # 快速预览档：降分辨率/帧数/步数并关闭超分与补帧（app/preview.py）
+    preview: bool = _env_bool("NOVEL2VID_PREVIEW", False)  # 快速预览档（=环境变量 NOVEL2VID_PREVIEW）
 
 
 class Engines(BaseModel if BaseModel is not object else object):
@@ -67,7 +75,7 @@ class Queue(BaseModel if BaseModel is not object else object):
     max_concurrency: int = 2
     budget_usd: float = 10.0
     resume: bool = True
-    cache_enabled: bool = False   # 资产缓存（同参产物复用），默认关闭
+    cache_enabled: bool = _env_bool("NOVEL2VID_ASSET_CACHE", False)  # 资产缓存（=环境变量 NOVEL2VID_ASSET_CACHE）
     cache_dir: str = ""           # 留空则用 output/.asset_cache
 
 
@@ -83,24 +91,39 @@ class Settings(BaseModel if BaseModel is not object else object):
     subtitles: Subtitles = Field(default_factory=Subtitles)
 
 
+def _apply_env_overrides(cfg: "Settings") -> "Settings":
+    """环境变量优先于 YAML：让 launcher/API 能在不改配置文件的情况下切换速度档位。"""
+    try:
+        if _env_bool("NOVEL2VID_PREVIEW", False):
+            cfg.engines.local.preview = True
+        if _env_bool("NOVEL2VID_ASSET_CACHE", False):
+            cfg.queue.cache_enabled = True
+        cache_dir = os.environ.get("NOVEL2VID_CACHE_DIR", "").strip()
+        if cache_dir:
+            cfg.queue.cache_dir = cache_dir
+    except Exception:
+        pass
+    return cfg
+
+
 def load_settings(path: Optional[str] = None) -> Settings:
-    """加载 YAML 配置；文件不存在时返回默认配置。"""
+    """加载 YAML 配置；文件不存在时返回默认配置。环境变量覆盖 YAML。"""
     if path:
         yaml_path = Path(path)
     else:
         yaml_path = PROJECT_ROOT / "settings.yaml"
     if not yaml_path.exists():
-        return Settings()
+        return _apply_env_overrides(Settings())
     try:
         import yaml
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
     except Exception:
-        return Settings()
+        return _apply_env_overrides(Settings())
     # 支持嵌套 dict → pydantic 模型
     try:
-        return Settings(**data)
+        return _apply_env_overrides(Settings(**data))
     except Exception:
-        return Settings()
+        return _apply_env_overrides(Settings())
 
 
 def dump_default_settings(path: Optional[str] = None) -> Path:
