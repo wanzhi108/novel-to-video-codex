@@ -25,6 +25,9 @@ web/node_modules/
 build/
 dist/
 *.spec.bak
+# 例外：前端构建产物必须入库（luminaforge.spec 打包 web/dist，保证 clone 后可复现构建）
+!web/dist/
+!web/dist/**
 
 # ── 运行时产物（story2 管线）──
 story2/videos/
@@ -99,3 +102,7 @@ _plugins/
 comfyui/hist_*.json
 comfyui/obj_info_raw.json
 *.part??.zip
+
+# ── 第三方整包 / 交付包（仅本地保留，不入库）──
+OpenMontage/
+_交付包/

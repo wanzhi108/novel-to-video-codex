@@ -1,4 +1,0 @@
-interface:
-  display_name: "Three.js World Generation"
-  short_description: "Build semantic, editable cinematic 3D worlds"
-  default_prompt: "Use $threejs-world-generation to turn this world brief into a deterministic, editable Three.js world and camera sequence."
