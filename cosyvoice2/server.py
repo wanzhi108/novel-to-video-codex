@@ -60,26 +60,29 @@ class TTSRequest(BaseModel):
     ref_wav: str = ""
     ref_text: str = ""
 
-# ─── 7 个 speaker → 7 段参考音频（多角色区分用） ──────────────
-# 大部分用同一段参考音频 + 不同 prompt_text 制造差异
-# 若 refs/ 目录存在多段 wav，会优先使用
+# ─── speaker → 参考音频（多角色区分用） ──────────────────────
+# 【2026-10-10 修复】原实现把 7 个 speaker 都配了"编造"的 prompt_text，与参考音频
+# 真实内容 7/7 不一致 —— 零样本克隆要求 prompt_text 与参考音频逐字一致，错配会导致
+# 拖长/发闷/语气生硬（实测同一句 18.4s vs edge-tts 5.9s）。
+# 现在所有 prompt_text 一律取自 cn_refs.json 的 ref_text（真实转录），并由
+# tests/test_cosyvoice_ref_contract.py 做契约校验，防止再次漂移。
 SPEAKER_DEFS = [
-    # (speaker_id, gender, ref_filename, prompt_text)
+    # (speaker_id, gender, ref_filename, prompt_text=参考音频真实转录)
     # ref_filename 位于 cn_refs/（可被 COSYVOICE_REFS_DIR 覆盖）
     ("default",              "中性", "cn03_女_36_四川.wav",
-     "希望你以后能够做的比我还好呦。"),
+     "阿黄和丹姐下去说我有约要带上她们"),
     ("chinese_male_deep",    "男",  "cn07_男_24_安徽.wav",
-     "今天我们来讨论一下这个项目的进展。"),
-    ("chinese_male_young",   "男",  "cn07_男_24_安徽.wav",
-     "嘿，兄弟你听我说，事情是这样的。"),
+     "那个工作中间有休息吗"),
+    ("chinese_male_young",   "男",  "cn06_男_20_上海.wav",
+     "不要和我扯永远不想说废话"),
     ("chinese_male_mature",  "男",  "cn07_男_24_安徽.wav",
-     "作为这个领域的专业人士，我认为应该这样处理。"),
+     "那个工作中间有休息吗"),
     ("chinese_female_soft",  "女",  "cn03_女_36_四川.wav",
-     "希望你以后能够做的比我还好哦。"),
+     "阿黄和丹姐下去说我有约要带上她们"),
     ("chinese_female_bright","女",  "cn03_女_36_四川.wav",
-     "哎呀你看你看，这东西真的好有意思呀。"),
+     "阿黄和丹姐下去说我有约要带上她们"),
     ("chinese_female_calm",  "女",  "cn03_女_36_四川.wav",
-     "各位听众朋友们，让我们一起走进今天的故事。"),
+     "阿黄和丹姐下去说我有约要带上她们"),
 ]
 
 SPEAKER_MAP = {s[0]: {"gender": s[1], "ref": s[2], "prompt": s[3]} for s in SPEAKER_DEFS}
@@ -89,8 +92,9 @@ SPEAKER_MAP = {s[0]: {"gender": s[1], "ref": s[2], "prompt": s[3]} for s in SPEA
 # 旧版 CosyVoice(v1) 是 22050，这里用 v2 必须写 24000，否则声音会失真/变调
 DEFAULT_SAMPLE_RATE = 24000
 
-# 官方零样本参考音频对应的正确逐字转写（必须与实际音频内容一致）
-CANONICAL_PROMPT = "希望你以后能够做的比我还好呦。"
+# 注册 cosy_default 所用参考音频的逐字转写：必须与 cn_refs/cn03_女_36_四川.wav 完全一致
+# （取自 cn_refs.json 的 ref_text；契约测试见 tests/test_cosyvoice_ref_contract.py）
+CANONICAL_PROMPT = "阿黄和丹姐下去说我有约要带上她们"
 REGISTERED_SPKE_ID = "cosy_default"
 
 REFS_DIR = Path(os.environ.get("COSYVOICE_REFS_DIR", ROOT / "cn_refs"))
@@ -254,16 +258,28 @@ def generate_tts(req: TTSRequest):
                 print(f"[CosyVoice] 使用外部参考音频(跨语言): {rp}", flush=True)
                 output = cv.inference_cross_lingual(text, rp, stream=False)
         else:
-            # 优先用注册的零样本说话人（音色更稳定、更保真）
-            try:
-                output = cv.inference_zero_shot(
-                    text, "", "", zero_shot_spk_id=REGISTERED_SPKE_ID, stream=False
-                )
-            except Exception as e:
-                # 注册说话人不可用时退回普通 zero_shot
-                print(f"[CosyVoice] 注册说话人调用失败，退回普通zero_shot: {e}", flush=True)
-                ref_path, prompt = resolve_speaker(voice)
-                output = cv.inference_zero_shot(text, prompt, ref_path, stream=False)
+            # 【修复 2026-10-10】必须使用"被请求的 speaker"：原实现固定用 REGISTERED_SPKE_ID，
+            # 导致所有角色都落到同一段 cosy_default（男女同音），且 mood 从未生效。
+            ref_path, prompt = resolve_speaker(voice)
+            spk_id = REGISTERED_SPKE_ID if voice in ("", "default") else f"preset_{voice}"
+            instruct = MOOD_INSTRUCT.get(mood, "") if mood else ""
+
+            if instruct:
+                # instruct2：指令式情绪合成（mood → instruct_text），解决"语气平板"
+                try:
+                    print(f"[CosyVoice] speaker={voice} 情绪指令={instruct}", flush=True)
+                    output = cv.inference_instruct2(text, instruct, ref_path, stream=False)
+                except Exception as e:
+                    print(f"[CosyVoice] instruct2 失败({e})，退回零样本", flush=True)
+                    output = cv.inference_zero_shot(text, prompt, ref_path, stream=False)
+            else:
+                try:
+                    output = cv.inference_zero_shot(text, "", "", zero_shot_spk_id=spk_id,
+                                                    stream=False)
+                except Exception as e:
+                    print(f"[CosyVoice] 注册说话人 {spk_id} 不可用({e})，退回普通 zero_shot",
+                          flush=True)
+                    output = cv.inference_zero_shot(text, prompt, ref_path, stream=False)
 
         # output 可能是 generator of dicts (新API) 或 list of tuples (老API)
         # 兼容多种返回格式；拼接所有段落（长文本会被前端分句，需全部拼回）

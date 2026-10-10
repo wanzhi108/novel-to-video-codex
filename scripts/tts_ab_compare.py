@@ -48,6 +48,45 @@ def _sha16(path: Path) -> str:
     return h[:16]
 
 
+def pitch_hz(path: Path) -> float:
+    """估计中位基频 F0（Hz），客观区分男/女声（男约 90-160，女约 170-280）。
+
+    只用 numpy 自相关法（不引入新依赖）；解析失败返回 -1。
+    """
+    try:
+        import wave
+        import numpy as np
+
+        with wave.open(str(path), "rb") as wf:
+            sr = wf.getframerate()
+            raw = wf.readframes(wf.getnframes())
+        x = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
+        if x.size < sr // 2:
+            return -1.0
+        x = x - x.mean()
+        frame, hop = int(0.04 * sr), int(0.02 * sr)
+        lo, hi = int(sr / 320), int(sr / 70)  # 搜索 70–320 Hz
+        vals = []
+        for start in range(0, x.size - frame, hop):
+            seg = x[start:start + frame]
+            if float(np.abs(seg).mean()) < 50:      # 跳过静音
+                continue
+            seg = seg * np.hanning(seg.size)
+            ac = np.correlate(seg, seg, mode="full")[seg.size - 1:]
+            if ac[0] <= 0:
+                continue
+            ac = ac / ac[0]
+            window = ac[lo:hi]
+            if window.size == 0:
+                continue
+            lag = int(np.argmax(window)) + lo
+            if ac[lag] > 0.3:                       # 相关度阈值，滤噪
+                vals.append(sr / lag)
+        return round(float(np.median(vals)), 1) if vals else -1.0
+    except Exception:
+        return -1.0
+
+
 def gen_cosyvoice(text: str, speaker: str, out: Path, mood: str = "",
                   base_url: str = COSY_URL, timeout: float = 600.0) -> dict:
     """调用 CosyVoice2 服务合成，返回记录。"""
@@ -60,7 +99,8 @@ def gen_cosyvoice(text: str, speaker: str, out: Path, mood: str = "",
             data = resp.read()
         out.write_bytes(data)
         return {"engine": "cosyvoice", "voice": speaker, "file": str(out),
-                "bytes": len(data), "duration": _duration(out), "sha16": _sha16(out), "ok": True}
+                "bytes": len(data), "duration": _duration(out), "sha16": _sha16(out),
+                "pitch": pitch_hz(out), "ok": True}
     except Exception as e:
         return {"engine": "cosyvoice", "voice": speaker, "file": str(out),
                 "ok": False, "error": f"{type(e).__name__}: {e}"}
