@@ -30,17 +30,36 @@ def _golden() -> dict:
 
 
 def test_outputs_match_golden_snapshot():
-    """迁移后的模块输出必须与迁移前 main.py 的输出逐字一致。"""
+    """迁移后的模块输出必须与迁移前 main.py 的输出逐字一致。
+
+    命名里含当天日期（MMDD），所以快照必须**注入当时捕获的日期**：
+    否则一到第二天就失败（2026-10-11 跨午夜时实测 1010→1011）。
+    """
     from engines import prompts
 
     base = _golden()
     for cam, expected in base["camera_prompt"].items():
         assert prompts.build_camera_prompt(cam) == expected, f"运镜 {cam!r} 输出漂移"
-    assert prompts.build_series_filename("被辞退那天", "职场", 3) == base["series_filename"]["a"]
-    assert prompts.build_series_filename("坏/标题:非法*字符?", "", 1) == base["series_filename"]["b"]
-    assert prompts.build_series_filename("", "甜宠", 12) == base["series_filename"]["c"]
+    # 从黄金快照反推捕获日期，保证快照永久有效（其余部分仍逐字比对）
+    frozen = base["series_filename"]["a"].rsplit("_", 1)[-1]
+    assert frozen.isdigit() and len(frozen) == 4, f"快照日期段异常: {frozen!r}"
+    assert prompts.build_series_filename("被辞退那天", "职场", 3,
+                                        date_str=frozen) == base["series_filename"]["a"]
+    assert prompts.build_series_filename("坏/标题:非法*字符?", "", 1,
+                                        date_str=frozen) == base["series_filename"]["b"]
+    assert prompts.build_series_filename("", "甜宠", 12,
+                                        date_str=frozen) == base["series_filename"]["c"]
     assert sorted(prompts.CAMERA_PRESETS.keys()) == base["camera_presets_keys"]
     assert prompts.CAMERA_MAP_SIMPLE == base["camera_map_simple"]
+
+
+def test_series_filename_defaults_to_today():
+    """默认路径仍用当天日期（注入参数只服务于测试，不改变生产行为）。"""
+    from datetime import datetime
+    from engines import prompts
+
+    got = prompts.build_series_filename("被辞退那天", "职场", 3)
+    assert got.endswith("_" + datetime.now().strftime("%m%d"))
 
 
 def test_symbols_no_longer_defined_in_main():

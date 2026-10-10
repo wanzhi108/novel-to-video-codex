@@ -149,10 +149,15 @@ CAMERA_MAP_SIMPLE = {
 }
 
 
-def build_series_filename(title: str, genre: str = "", episode: int = 1) -> str:
-    """P1-⑧: 系列化命名：题材_系列名_第N集_日期"""
+def build_series_filename(title: str, genre: str = "", episode: int = 1,
+                          *, date_str: str | None = None) -> str:
+    """P1-⑧: 系列化命名：题材_系列名_第N集_日期
+
+    `date_str` 仅用于测试注入（默认取当天 MMDD）——
+    否则黄金快照会**每天失效**（2026-10-11 跨午夜实测：1010 → 1011 直接失败）。
+    """
     from datetime import datetime
-    today = datetime.now().strftime("%m%d")
+    today = date_str or datetime.now().strftime("%m%d")
     # 题材归类
     genre_tag = ""
     if genre:
