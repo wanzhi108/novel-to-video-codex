@@ -1,0 +1,53 @@
+{
+  "camera_prompt": {
+    "轨道慢推": "slow dolly push in, camera moving steadily forward at 0.8m/s, 50mm focal length, background gradually blurring, subject coming into sharp focus",
+    "推": "slow push in, camera dolly 0.8m/s, 50mm focal length, cinematic camera movement",
+    "轨道慢推·特写": "slow dolly push in, camera moving steadily forward at 0.8m/s, 50mm focal length, background gradually blurring, subject coming into sharp focus",
+    "摇": "slow push in, camera dolly 0.8m/s, 50mm focal length, cinematic camera movement",
+    "未知镜头": "slow push in, camera dolly 0.8m/s, 50mm focal length, cinematic camera movement",
+    "": "slow push in, camera dolly 0.8m/s, 50mm focal length, 1.5m height, cinematic camera movement",
+    "拉·全景": "wide establishing shot, full environmental context"
+  },
+  "series_filename": {
+    "a": "职_被辞退那天_第3集_1010",
+    "b": "坏标题非法字符_第1集_1010",
+    "c": "甜_未命名_第12集_1010"
+  },
+  "camera_presets_keys": [
+    "仰拍旋摇",
+    "低机位前推",
+    "俯拍旋摇",
+    "变焦拉镜",
+    "变焦推镜",
+    "右摇镜",
+    "右环摇",
+    "垂直升镜",
+    "左摇镜",
+    "左环摇",
+    "急速推镜",
+    "斜角拉镜",
+    "斜角推镜",
+    "旋转前推",
+    "特写切远景快拉",
+    "跟焦跟拍",
+    "轨道慢推",
+    "阶梯拉镜",
+    "阶梯推镜",
+    "高机位后拉",
+    "高速跟拍"
+  ],
+  "camera_map_simple": {
+    "固定镜头": "static shot, locked camera, no movement",
+    "缓慢推镜": "slow push in, dolly zoom, gradually approaching subject",
+    "缓慢拉镜": "slow pull back, dolly out, revealing wider context",
+    "横摇": "smooth panning shot, horizontal tracking movement",
+    "竖摇": "tilt shot, vertical camera movement",
+    "特写": "extreme close-up shot, detail focus, shallow depth of field",
+    "近景": "medium close-up, intimate framing",
+    "中景": "medium shot, balanced composition",
+    "全景": "wide establishing shot, full environmental context",
+    "跟拍": "tracking shot, smooth camera follow, motion parallax",
+    "俯拍": "high angle shot, bird's eye perspective",
+    "仰拍": "low angle hero shot, dramatic upward perspective"
+  }
+}
