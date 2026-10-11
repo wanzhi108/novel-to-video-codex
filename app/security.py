@@ -83,8 +83,14 @@ async def read_upload_capped(file: UploadFile, label: str = "文件") -> bytes:
 
 
 def safe_upload_name(filename: str, fallback: str = "upload.bin") -> str:
-    """取纯文件名并清洗，防上传文件名目录穿越（如 ..\\..\\x.png）。"""
-    name = Path(str(filename or "")).name.replace("\\", "_").replace("/", "_").strip()
+    """取纯文件名并清洗，防上传文件名目录穿越（如 ..\\..\\x.png）。
+
+    **必须先把两种分隔符统一**再取 basename：否则在 Linux 上
+    `Path("..\\..\\evil.png").name` 不把反斜杠当分隔符，会得到 `_.._evil.png` 而不是
+    `evil.png`（Windows 本地通过、CI runner 失败 —— 2026-10-11 首次真跑 CI 实测）。
+    """
+    raw = str(filename or "").replace("\\", "/")
+    name = Path(raw).name.replace("\\", "_").replace("/", "_").strip()
     name = re.sub(r'[<>:"|?*\x00-\x1f]', "_", name).strip(" .")
     if not name or name in (".", ".."):
         return fallback

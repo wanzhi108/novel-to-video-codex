@@ -1,4 +1,9 @@
-"""质量门闭环测试：一次过门 / 换seed重试后过门 / 全失败抛错。"""
+"""质量门闭环测试：一次过门 / 换seed重试后过门 / 全失败抛错。
+
+媒体样本由 conftest 的 `sample_video` / `fake_video` 夹具**现场生成**：
+此前引用的 `OpenMontage/**`、`story2/**` 大资产已移出 git 索引，CI 上没有它们
+→ 3 个用例在 runner 上必挂（2026-10-11 首次真跑 CI 实测）。
+"""
 import asyncio
 import sys
 from pathlib import Path
@@ -9,26 +14,25 @@ from engines.base import BaseEngine, ClipResult, EngineError, GenerateRequest  #
 from engines.quality_loop import GenerationGate  # noqa: E402
 from quality.gate import QualityGate  # noqa: E402
 
-GOOD_VIDEO = Path("OpenMontage/projects/overtime-cat/renders/final.mp4")  # 30s 真视频
-BAD_VIDEO = Path("story2/shot_01_kf.png")  # 图片冒充视频（gate 必失败）
-
 
 class MockEngine(BaseEngine):
-    def __init__(self, name: str, fail_first: int = 0, bad_path: Path | None = None):
+    def __init__(self, name: str, good_path: Path, fail_first: int = 0,
+                 bad_path: Path | None = None):
         self.name = name
         self.calls = 0
         self.fail_first = fail_first
         self.bad_path = bad_path
+        self.good_path = good_path
 
     async def generate(self, req):
         self.calls += 1
         if self.calls <= self.fail_first and self.bad_path:
             return ClipResult(video_path=self.bad_path, engine=self.name, seed=req.seed)
-        return ClipResult(video_path=GOOD_VIDEO, engine=self.name, seed=req.seed)
+        return ClipResult(video_path=self.good_path, engine=self.name, seed=req.seed)
 
 
-async def test_pass_first_try():
-    eng = MockEngine("mock_good")
+async def test_pass_first_try(sample_video):
+    eng = MockEngine("mock_good", good_path=sample_video)
     gate = GenerationGate([eng], QualityGate())
     req = GenerateRequest(prompt="test", duration_seconds=5.0)
     clip = await gate.generate(req)
@@ -37,8 +41,8 @@ async def test_pass_first_try():
     print("✅ 一次过门: 引擎调用1次, passed=True")
 
 
-async def test_retry_reseed():
-    eng = MockEngine("mock_flaky", fail_first=1, bad_path=BAD_VIDEO)
+async def test_retry_reseed(sample_video, fake_video):
+    eng = MockEngine("mock_flaky", good_path=sample_video, fail_first=1, bad_path=fake_video)
     gate = GenerationGate([eng], QualityGate(), config=None)  # 默认 max_retries=2
     req = GenerateRequest(prompt="test", duration_seconds=5.0)
     clip = await gate.generate(req)
@@ -49,8 +53,8 @@ async def test_retry_reseed():
     print(f"✅ 换seed重试: 调用2次, history=[{hist[0]['passed']},{hist[1]['passed']}] → passed")
 
 
-async def test_all_fail():
-    eng = MockEngine("mock_always_bad", fail_first=99, bad_path=BAD_VIDEO)
+async def test_all_fail(sample_video, fake_video):
+    eng = MockEngine("mock_always_bad", good_path=sample_video, fail_first=99, bad_path=fake_video)
     gate = GenerationGate([eng], QualityGate(), config=None)
     req = GenerateRequest(prompt="test", duration_seconds=5.0)
     clip = await gate.generate(req)
@@ -60,10 +64,9 @@ async def test_all_fail():
 
 
 def main():
-    asyncio.run(test_pass_first_try())
-    asyncio.run(test_retry_reseed())
-    asyncio.run(test_all_fail())
-    print("QUALITY_LOOP TEST OK")
+    # 媒体样本由 conftest 夹具生成，直跑 __main__ 拿不到夹具 → 统一走 pytest
+    print("请用 pytest 运行（样本视频由 conftest 夹具现场生成）：")
+    print("  pytest tests/test_quality_loop.py -q")
 
 
 if __name__ == "__main__":

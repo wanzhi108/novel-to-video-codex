@@ -13,6 +13,8 @@ import pathlib
 import re
 import sys
 
+import pytest
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
@@ -55,6 +57,8 @@ def test_every_speaker_prompt_matches_reference_transcript():
     assert not bad, "prompt_text 与参考音频真实转录不一致（会导致拖长/生硬）:\n  " + "\n  ".join(bad)
 
 
+@pytest.mark.skipif(not CN_REFS_DIR.exists(),
+                    reason="参考音频是本地资产（cosyvoice2/cn_refs 未随仓库分发）；有资产时才校验")
 def test_referenced_reference_wavs_exist():
     missing = [wav for _sid, _g, wav, _p in _speaker_defs() if not (CN_REFS_DIR / wav).exists()]
     assert not missing, f"SPEAKER_DEFS 引用了不存在的参考音频: {missing}"

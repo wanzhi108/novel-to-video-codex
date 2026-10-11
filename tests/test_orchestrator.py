@@ -14,27 +14,29 @@ from engines.base import BaseEngine, ClipResult  # noqa: E402
 from pipeline.orchestrator import Orchestrator, SceneReq  # noqa: E402
 from config.settings import Settings, Engines, EngineCloud, Queue  # noqa: E402
 
-GOOD = Path("OpenMontage/projects/overtime-cat/renders/final.mp4")
-
 
 class MockGoodEngine(BaseEngine):
     name = "mock_good"
     kind = "cloud"
 
+    def __init__(self, good_path):
+        self.good_path = good_path
+
     def is_available(self):
         return True
 
     async def generate(self, req):
-        return ClipResult(video_path=GOOD, engine=self.name, seed=req.seed, cost_usd=0.1)
+        return ClipResult(video_path=self.good_path, engine=self.name, seed=req.seed,
+                          cost_usd=0.1)
 
 
-async def test_run_assets():
+async def test_run_assets(sample_video):
     import shutil
     settings = Settings()
     settings.queue = Queue(max_concurrency=2, budget_usd=5.0, resume=True)
     orch = Orchestrator(settings)
     # 注入 mock 引擎（绕过 _build_engines 的可用性探测）
-    orch._build_engines = lambda: [MockGoodEngine()]
+    orch._build_engines = lambda: [MockGoodEngine(sample_video)]
 
     scenes = [
         SceneReq(id="s1", prompt="cat walks to bowl", duration_seconds=3.0),
